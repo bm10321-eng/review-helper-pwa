@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#254a38" />
+  <meta name="description" content="사장님을 위한 다정한 배달 리뷰 답글 도우미" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+  <title>리뷰 도우미</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <img src="app-icon-user.png" class="app-icon" alt="리뷰 도우미 아이콘" />
+      <div><p class="eyebrow">따뜻하고 꼼꼼한 사장님 답글</p><h1>리뷰 도우미</h1></div>
+      <button id="installButton" class="ghost-button" hidden>앱 설치</button>
+    </header>
+    <div class="forest-banner" aria-hidden="true"><img src="forest-banner-user.png" alt="" /><span>오늘도 고생하셨습니다:)</span></div>
+
+    <section class="card stores-card">
+      <div class="section-heading"><div><span class="leaf">❦</span><h2>가게 정보</h2></div><span class="hint">최대 3곳 저장</span></div>
+      <div id="storeTabs" class="store-tabs" aria-label="가게 선택"></div>
+      <label>가게 이름 <input id="storeName" maxlength="30" placeholder="예: 숲속한상" /></label>
+      <label>가게 특징·말투 <input id="storeNote" maxlength="120" placeholder="예: 정갈하고 친근하게, 국밥 전문" /></label>
+      <button id="saveStore" class="secondary-button">이 가게 정보 저장</button>
+    </section>
+
+    <section class="card">
+      <div class="section-heading"><div><span class="leaf">✦</span><h2>리뷰 입력</h2></div></div>
+      <div class="rating-row" role="radiogroup" aria-label="별점">
+        <span>별점</span><div id="stars"></div>
+      </div>
+      <label>직접 입력한 리뷰
+        <textarea id="reviewText" rows="6" placeholder="배달앱에서 복사할 수 없을 때 여기에 직접 적어 주세요."></textarea>
+      </label>
+      <div class="or">또는</div>
+      <label class="upload-label">리뷰 캡처 이미지
+        <input id="reviewImage" type="file" accept="image/*" />
+      </label>
+      <div id="imageArea" class="image-area" hidden><img id="imagePreview" alt="업로드한 리뷰 캡처 미리보기" /><button id="ocrButton" class="secondary-button">이미지 글자 읽기 (OCR)</button><p id="ocrStatus" class="hint"></p></div>
+      <p class="hint">이미지 글자 읽기는 처음 한 번 인터넷 연결이 필요할 수 있어요. 인식 결과는 꼭 한 번 확인해 주세요.</p>
+    </section>
+
+    <section class="card compact-options">
+      <label>답글 길이
+        <select id="replyLength"><option value="short">짧게</option><option value="medium" selected>보통</option><option value="long">조금 길게</option></select>
+      </label>
+      <label>말투
+        <select id="tone"><option value="warm">따뜻하고 자연스럽게</option><option value="calm">차분하고 정중하게</option><option value="bright">밝고 친근하게</option></select>
+      </label>
+    </section>
+
+    <button id="generate" class="primary-button">답글 만들기 <span>→</span></button>
+    <section class="card result-card" aria-live="polite">
+      <div class="section-heading"><div><span class="leaf">☘</span><h2>생성된 답글</h2></div><button id="copy" class="text-button">복사</button></div>
+      <textarea id="result" rows="10" placeholder="여기에 답글이 만들어집니다. 마음에 드는 대로 고쳐서 사용하세요."></textarea>
+      <p class="hint">실제 상황과 다른 내용은 전송 전에 수정해 주세요. 개인정보·주문번호는 답글에 쓰지 않는 것이 좋아요.</p>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
