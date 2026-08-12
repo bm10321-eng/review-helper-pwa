@@ -443,10 +443,13 @@ function repairOcrReview(text) {
   return (text || '')
     .replace(/\b(?:Es|AZ|TR|HH|Zoid)\b\s*/gi, '')
     .replace(/안\s+(?:오[는\s]*줄|[A-Za-z]{1,4})\s*알고/g, '안 오는 줄 알고')
+    .replace(/이제\s*보니/g, '이제 보니')
     .replace(/두\s*개/g, '두 개')
     .replace(/세\s*개/g, '세 개')
-    .replace(/김치\s*찜\s*인분/g, '김치찜 1인분')
+    .replace(/김치\s*찜\s*1?\s*인분/g, '김치찜 1인분')
     .replace(/공기\s*밥/g, '공기밥')
+    .replace(/ㅠ\s*ㅠ\s*ㅠ\s*ㅠ?/g, 'ㅠㅠㅠㅠ')
+    .replace(/아주\s*(?:4+\s*)?굽어먹었습니다/g, '아주 싹싹 긁어먹었습니다')
     .replace(/\s*([,.!?ㅠ])\s*/g, '$1 ')
     .replace(/\s+/g, ' ').trim();
 }
