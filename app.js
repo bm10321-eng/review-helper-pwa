@@ -2,6 +2,7 @@ const $ = s => document.querySelector(s);
 const defaults = [{name:'',note:''},{name:'',note:''},{name:'',note:''}];
 let stores = JSON.parse(localStorage.getItem('review-helper-stores') || 'null') || defaults;
 let activeStore = 0, rating = 5, deferredPrompt;
+let replyHistory = [];
 const emoji = { happy:['😊','😆','🥹','💛','🍀','✨','🙌','🫶','💜','🌷'], playful:['😆','ㅋㅋ','🥹','🙌','✨','💛'], calm:['😊','💛','🍀'] };
 const menuWords = ['감자튀김','김치찜','닭강정','치즈볼','볶음밥','떡볶이','치킨','피자','족발','보쌈','국밥','김밥','초밥','라면','파스타','버거','샐러드','튀김','갈비','삼겹살','덮밥','찜','탕','면'];
 const ignoreLine = /최근\s*리뷰|리뷰\s*노출\s*정책|사장님\s*댓글|최신순|사진\s*리뷰만\s*보기|신고하기|최근\s*\d+번\s*주문|리뷰\s*\d+|평균\s*별점|알뜰배달|오늘[,，]?|주문\s*내역|도움돼요|답글|메뉴\s*더보기/i;
@@ -21,26 +22,47 @@ function renderStores(){ $('#storeTabs').innerHTML=stores.map((s,i)=>`<button cl
 function renderStars(){ $('#stars').innerHTML=[1,2,3,4,5].map(n=>`<button class="star ${n<=rating?'selected':''}" aria-label="${n}점">★</button>`).join(''); document.querySelectorAll('.star').forEach((b,i)=>b.onclick=()=>{rating=i+1;renderStars();}); }
 function analyze(text){ const match=(p)=>{p.lastIndex=0;return p.test(text);}; return { menus:menuWords.filter(m=>text.includes(m)).slice(0,3), positive:positiveRules.filter(([,p])=>match(p)).map(([id])=>id), negative:negativeRules.filter(([,p])=>match(p)).map(([id])=>id), playful:/ㅋㅋ|ㅎㅎ|크흣|존맛|순삭|미쳤|대박|완전/.test(text), revisit:/다음(에|에도)?.{0,10}(주문|시킬|갈|방문)|또\s*(주문|시킬|갈|먹)|재주문|재방문|정착/.test(text) }; }
 function intro(name){ return `${(name || '고객').trim()}님,`; }
-function positiveReply(a,text){
+function positiveReply(a,text,tone){
   const p=a.positive, menu=a.menus[0] ? `${a.menus[0]} ` : '';
-  if(p.includes('return')) return pick(['오랜만에 드셔도 맛있었다고 해주시니 더 반갑고 괜히 뿌듯하네요!','다시 생각나서 찾아주셨다는 말이 정말 반갑네요!','정착 이야기까지 해주시다니 저희도 기분이 한껏 좋아집니다!']);
-  if(p.includes('spicy')) return '매운맛에 땀은 나도 계속 손이 가셨다니, 제대로 즐겨주신 것 같아 뿌듯합니다!';
-  if(p.includes('crisp')) return '감자튀김의 바삭함까지 콕 집어 알아봐 주셔서 괜히 더 기분 좋네요!';
-  if(p.includes('soft') && p.includes('sauce')) return '부드러운 식감에 소스까지 입맛에 딱 맞으셨나 봐요. 이 조합을 좋아해 주시니 정말 반갑습니다!';
-  if(p.includes('soft')) return '부드러운 식감으로 드셨다니 다행이에요!';
-  if(p.includes('sauce')) return '소스가 취향에 제대로 꽂히셨나 봐요. 저희도 괜히 뿌듯합니다!';
-  if(p.includes('quantity')) return '생각보다 든든하게 드신 것 같아 저희도 기분 좋네요!';
-  if(p.includes('taste')) return `${menu}맛있게 드셔주셨다니 준비한 보람이 큽니다!`;
-  if(p.includes('price')) return '가격까지 좋게 봐주셔서 감사합니다!';
-  if(p.includes('delivery')) return '배달도 만족스럽게 받아보셨다니 다행이에요!';
-  if(p.includes('packaging')) return '포장 상태까지 꼼꼼히 봐주셔서 감사합니다!';
-  if(p.includes('service')) return '친절하게 느껴주셨다니 저희도 정말 기분 좋습니다!';
-  return text.length < 18 ? '짧지만 기분 좋은 마음이 전해져서 저희도 웃음이 나네요!' : '남겨주신 말씀을 읽으니 저희도 기분이 좋아집니다!';
+  const voice={warm:['말씀 덕분에 저희도 절로 미소가 나네요!','기분 좋게 드셨다는 마음이 고스란히 전해져요!'],bright:['이렇게 반가운 후기는 언제나 힘이 납니다!','맛있게 즐겨주셨다니 오늘도 에너지 충전이에요!'],calm:['좋게 이용해 주셨다니 감사드립니다.','만족하셨다니 준비한 보람이 큽니다.']}[tone];
+  if(p.includes('return')) return pick(['오랜만에 드셔도 맛있었다고 해주시니 더 반갑고 뿌듯합니다!','다시 생각나서 찾아주셨다는 말이 정말 반갑네요!','재주문해 주시고 맛있게 드셔주셨다니 큰 힘이 됩니다!']);
+  if(p.includes('spicy')) return pick(['매운맛을 제대로 즐겨주신 것 같아 뿌듯합니다!','얼큰한 맛이 입맛에 맞으셨다니 정말 다행이에요!']);
+  if(p.includes('crisp')) return pick(['바삭한 식감까지 알아봐 주셔서 기분 좋네요!','튀김의 바삭함을 맛있게 즐겨주셨다니 감사합니다!']);
+  if(p.includes('soft') && p.includes('sauce')) return pick(['식감과 소스 조합까지 입맛에 맞으셨다니 정말 반갑습니다!','부드러운 식감과 소스를 함께 좋아해 주셔서 뿌듯해요!']);
+  if(p.includes('soft')) return pick(['부드러운 식감으로 맛있게 드셨다니 다행이에요!','식감까지 만족하셨다니 감사한 마음입니다!']);
+  if(p.includes('sauce')) return pick(['소스가 취향에 잘 맞으셨다니 저희도 뿌듯합니다!','양념까지 맛있게 즐겨주셨다니 감사합니다!']);
+  if(p.includes('quantity')) return pick(['든든하게 드셨다니 저희도 기분 좋네요!','푸짐한 한 끼가 되었다니 정말 다행이에요!']);
+  if(p.includes('taste')) return pick([`${menu}맛있게 드셔주셨다니 준비한 보람이 큽니다!`,`${menu}맛있다는 말씀에 저희도 힘이 납니다!`]);
+  if(p.includes('price')) return pick(['가격까지 좋게 봐주셔서 감사합니다!','가성비 좋게 즐겨주셨다니 기쁩니다!']);
+  if(p.includes('delivery')) return pick(['배달도 만족스럽게 받아보셨다니 다행이에요!','기다림 없이 맛있게 받아보셨다니 감사합니다!']);
+  if(p.includes('packaging')) return pick(['포장 상태까지 꼼꼼히 봐주셔서 감사합니다!','깔끔하게 받아보셨다니 안심이 됩니다!']);
+  if(p.includes('service')) return pick(['친절하게 느껴주셨다니 저희도 정말 기분 좋습니다!','좋은 마음으로 이용해 주셔서 감사합니다!']);
+  return text.length<18 ? pick([...voice,'짧지만 따뜻한 한마디에 저희도 웃음이 나네요!']) : pick([...voice,'남겨주신 말씀을 읽으니 저희도 기분이 좋아집니다!']);
 }
-function negativeReply(a){ const p=a.negative; if(p.includes('delivery')) return '배달이 늦어 기다리게 해드린 점 진심으로 죄송합니다. 기다리신 것도 아쉬우셨을 텐데 더 속상하셨을 것 같아요.'; if(p.includes('missing')) return '주문 구성에 누락이 있어 불편을 드린 점 죄송합니다. 말씀해 주신 부분은 꼭 확인하겠습니다.'; if(p.includes('packaging')) return '포장 문제로 불편을 드린 점 진심으로 죄송합니다. 같은 일이 없도록 포장 과정을 다시 살피겠습니다.'; if(p.includes('temperature')) return '음식이 식은 상태로 도착했다니 많이 아쉬우셨을 것 같아요. 죄송합니다.'; if(p.includes('quality')) return '음식 상태가 기대에 미치지 못해 실망을 드린 점 죄송합니다. 말씀해 주신 부분은 꼼꼼히 확인하겠습니다.'; if(p.includes('service')) return '응대에서 불편을 드린 점 진심으로 죄송합니다. 더 편안하게 이용하실 수 있도록 살피겠습니다.'; return ''; }
-function closing(a,tone){ if(a.revisit || a.positive.includes('return')) return pick(['다음에는 더 자주 생각나실 수 있게 맛있게 준비해둘게요!','또 생각나실 때 반갑게 맞이하겠습니다!','다음 주문도 기분 좋게 드실 수 있도록 잘 준비해둘게요!']); if(tone==='bright') return '다음 한 끼도 맛있게 준비해둘게요!'; if(tone==='calm') return '다음에도 만족스러운 한 끼가 되도록 잘 준비하겠습니다.'; return '다음에도 맛있게 드실 수 있게 준비해둘게요!'; }
+function detailReply(a,tone){
+  if(a.revisit||a.positive.includes('return')) return pick(['다음에도 생각나실 때마다 반갑게 맞이하겠습니다!','다음 주문도 기분 좋은 한 끼가 되도록 잘 준비할게요!']);
+  if(a.menus.length) return pick([`${a.menus[0]}도 늘 한결같이 맛있게 준비하겠습니다!`,`다음에도 ${a.menus[0]} 맛있게 챙겨드릴게요!`]);
+  return tone==='bright'?pick(['다음 한 끼도 맛있게 준비해둘게요!','다음에도 맛있는 메뉴로 기다리고 있을게요!']):pick(['다음에도 만족스러운 한 끼가 되도록 정성껏 준비하겠습니다.','다음 주문도 맛있게 드실 수 있도록 잘 준비하겠습니다.']);
+}
+function negativeReply(a){ const p=a.negative; if(p.includes('delivery')) return pick(['배달이 늦어 기다리게 해드린 점 진심으로 죄송합니다.','기다리신 시간이 길어 불편을 드린 점 사과드립니다.']); if(p.includes('missing')) return pick(['주문 구성에 누락이 있어 불편을 드린 점 죄송합니다.','빠진 구성으로 실망을 드린 점 진심으로 죄송합니다.']); if(p.includes('packaging')) return pick(['포장 문제로 불편을 드린 점 진심으로 죄송합니다.','포장 상태가 기대에 미치지 못해 죄송합니다.']); if(p.includes('temperature')) return pick(['음식이 식은 상태로 도착했다니 많이 아쉬우셨을 것 같아요. 죄송합니다.','따뜻하게 드시지 못하게 해드린 점 죄송합니다.']); if(p.includes('quality')) return pick(['음식 상태가 기대에 미치지 못해 실망을 드린 점 죄송합니다.','맛과 상태로 불쾌함을 드린 점 진심으로 사과드립니다.']); if(p.includes('service')) return pick(['응대에서 불편을 드린 점 진심으로 죄송합니다.','편안하게 이용하지 못하신 점 사과드립니다.']); return ''; }
+function negativeFollowup(){return pick(['말씀해 주신 내용은 바로 확인해 같은 일이 없도록 개선하겠습니다.','남겨주신 지적을 가볍게 넘기지 않고 조리와 포장 과정을 다시 점검하겠습니다.','소중한 의견을 바탕으로 더 세심히 살피겠습니다.']);}
+function closing(a,tone){ if(a.revisit || a.positive.includes('return')) return pick(['다음에는 더 자주 생각나실 수 있게 맛있게 준비해둘게요!','또 생각나실 때 반갑게 맞이하겠습니다!','다음 주문도 기분 좋게 드실 수 있도록 잘 준비해둘게요!']); if(tone==='bright') return pick(['다음 한 끼도 맛있게 준비해둘게요!','다음에도 신나게 맛있는 한 끼 챙겨드릴게요!']); if(tone==='calm') return pick(['다음에도 만족스러운 한 끼가 되도록 잘 준비하겠습니다.','다음 주문도 정성껏 준비하겠습니다.']); return pick(['다음에도 맛있게 드실 수 있게 준비해둘게요!','다음에도 기분 좋은 한 끼가 되도록 노력하겠습니다!']); }
 function decorate(sentences,a,negative){ if(negative) return sentences.join(' '); const icons=a.playful?emoji.playful:emoji.happy; return sentences.map((s,i)=>`${s} ${i===0?pick(icons):pick(emoji.happy)}`).join(' '); }
-function generate(){ const text=$('#reviewText').value.trim(), name=$('#customerName').value.trim(); if(!text){$('#result').value=`${intro(name)} 별점으로 남겨주신 마음 감사합니다 ${pick(emoji.calm)}`;return;} const a=analyze(text), bad=negativeReply(a), parts=[]; parts.push(intro(name)); if(bad){parts.push(bad); if(a.positive.length)parts.push(positiveReply(a,text));} else {parts.push(positiveReply(a,text)); parts.push(closing(a,$('#tone').value));} const limit=$('#replyLength').value==='short'?2:$('#replyLength').value==='medium'?3:4; $('#result').value=decorate(parts.slice(0,limit),a,Boolean(bad)); }
+function generate(){
+  const text=$('#reviewText').value.trim(), name=$('#customerName').value.trim(), tone=$('#tone').value;
+  if(!text){$('#result').value=`${intro(name)} 별점으로 남겨주신 마음 감사합니다 ${pick(emoji.calm)}`;return;}
+  const a=analyze(text), bad=negativeReply(a), length=$('#replyLength').value;
+  let result='';
+  for(let attempt=0;attempt<8;attempt++){
+    const parts=[intro(name)];
+    if(bad){parts.push(bad);if(length!=='short')parts.push(negativeFollowup());if(length==='long'&&a.positive.length)parts.push(positiveReply(a,text,tone));}
+    else {parts.push(positiveReply(a,text,tone));if(length!=='short')parts.push(detailReply(a,tone));if(length==='long')parts.push(closing(a,tone));}
+    result=decorate(parts,a,Boolean(bad));
+    if(!replyHistory.includes(result))break;
+  }
+  replyHistory=[result,...replyHistory].slice(0,30);
+  $('#result').value=result;
+}
 function cleanOcrLine(line){ return line.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim(); }
 function isName(line){ return /^[가-힣A-Za-z0-9][가-힣A-Za-z0-9._-]{1,19}$/.test(line) && !ignoreLine.test(line) && !/^(오늘|최근|리뷰|별점|주문)$/.test(line); }
 function parseReviewOcr(data){
@@ -52,10 +74,16 @@ function parseReviewOcr(data){
   const anchor=entries.filter(line=>meta.test(line.text)&&(!nameLine||line.box.y0>=nameLine.box.y0)).sort((a,b)=>b.box.y1-a.box.y1)[0];
   if(!anchor)return {name,review:''};
   const imageHeight=Math.max(...entries.map(line=>line.box.y1),anchor.box.y1); const maxStartGap=Math.max(90,imageHeight*.18);
-  const allowed=entries.filter(line=>line.box.y0>anchor.box.y1&&line.box.y0-anchor.box.y1<maxStartGap&&!meta.test(line.text)&&!ignoreLine.test(line.text)&&!/^(김치찜|치킨|피자|국밥|떡볶이|족발|보쌈|\d+(\.\d+)?인)/.test(line.text)).sort((a,b)=>a.box.y0-b.box.y0);
-  if(!allowed.length)return {name,review:''};
-  const first=allowed[0], height=Math.max(20,first.box.y1-first.box.y0); const review=[];
-  for(const line of allowed){if(line.box.y0-first.box.y0>height*4||review.length&&line.box.y0-review[review.length-1].box.y1>height*2.2)break;review.push(line);}
+  const candidate=entries.filter(line=>line.box.y0>anchor.box.y1&&!meta.test(line.text)&&!ignoreLine.test(line.text)&&!/^(김치찜|치킨|피자|국밥|떡볶이|족발|보쌈|\d+(\.\d+)?인)/.test(line.text)).sort((a,b)=>a.box.y0-b.box.y0);
+  const first=candidate.find(line=>line.box.y0-anchor.box.y1<maxStartGap);
+  if(!first)return {name,review:''};
+  const height=Math.max(20,first.box.y1-first.box.y0), review=[first];
+  for(const line of candidate){
+    if(line===first||line.box.y0<first.box.y0)continue;
+    const previous=review[review.length-1];
+    if(line.box.y0-previous.box.y1>height*2.8)break;
+    review.push(line);
+  }
   const text=review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim().replace(/\s+[0-9Il|,.'`]+$/,'').trim();
   return {name,review:text};
 }
