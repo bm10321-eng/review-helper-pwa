@@ -48,11 +48,9 @@ function parseReviewOcr(raw){
   if(nicknameMatch){ const nameLine=lines.find(line=>line.includes(nicknameMatch[0])); start=nameLine ? lines.indexOf(nameLine) : -1; }
   for(let i=0;i<lines.length;i++){ const next=lines.slice(i+1,i+3).join(' '); if(isName(lines[i]) && /(최근\s*\d+번\s*주문|리뷰\s*\d+|평균\s*별점|오늘|별점|알뜰배달|★)/.test(next)){name=lines[i];start=i;break;} }
   if(!name){ const candidate=lines.find(line=>isName(line)&&!/(김치찜|백반|치킨|피자|국밥)/.test(line)); if(candidate){name=candidate;start=lines.indexOf(candidate);} }
-  let review=[]; for(let i=Math.max(start+1,0);i<lines.length;i++){const line=lines[i]; if(ignoreLine.test(line)||/^★|^[☆★\s]+$/.test(line)||/^(오늘|어제|\d{4}[./-]\d)/.test(line)||/^\d+(\.\d+)?인\s/.test(line))continue; if(/^(김치찜|치킨|피자|국밥|떡볶이|족발|보쌈|\d+(\.\d+)?인)/.test(line) && review.length)break; if(line===name||line.length<2)continue; review.push(line); }
-  let combined=review.join(' ').replace(/^[^가-힣A-Za-z]+/,'').replace(/\s+/g,' ').trim();
-  if(nicknameMatch){ const after=raw.slice(raw.indexOf(nicknameMatch[0])+nicknameMatch[0].length).replace(/\r?\n/g,' '); const phrase=after.match(/([가-힣][가-힣\s]{3,}[!?.…💗❤️💕]*)/); if(phrase) combined=phrase[1].replace(/\s+/g,' ').trim(); }
-  combined=combined.replace(/(?:\d+%|TR\s*=|as\.|\d+\.?\d*인|김치찜\s*백반).*/i,'').trim();
-  return {name,review:combined};
+  const meta=/리뷰\s*\d+|평균\s*별점|최근\s*\d+번|오늘|어제|지난\s*달|알뜰배달|한집배달|별점|★|☆/;
+  let review=[]; for(let i=Math.max(start+1,0);i<lines.length;i++){const line=lines[i]; if(ignoreLine.test(line)||meta.test(line)||line===name||line.length<2)continue; if(/^(김치찜|치킨|피자|국밥|떡볶이|족발|보쌈|\d+(\.\d+)?인)/.test(line))break; review.push(line); }
+  return {name,review:review.join(' ').replace(/^[^가-힣A-Za-z]+/,'').replace(/\s+/g,' ').trim()};
 }
 async function detectStarRating(file){
   const bitmap=await createImageBitmap(file); const canvas=document.createElement('canvas'); const scale=Math.min(1,900/bitmap.width); canvas.width=Math.round(bitmap.width*scale); canvas.height=Math.round(bitmap.height*scale); const ctx=canvas.getContext('2d',{willReadFrequently:true}); ctx.drawImage(bitmap,0,0,canvas.width,canvas.height); const {data}=ctx.getImageData(0,Math.round(canvas.height*.18),canvas.width,Math.round(canvas.height*.52)); const w=canvas.width,h=Math.round(canvas.height*.52), seen=new Uint8Array(w*h), groups=[]; const yellow=i=>data[i]>175&&data[i+1]>115&&data[i+1]<210&&data[i+2]<125&&data[i]-data[i+2]>85;
