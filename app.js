@@ -1,3 +1,85 @@
+const $ = s => document.querySelector(s);
+const defaults = [{name:'',note:''},{name:'',note:''},{name:'',note:''}];
+let stores = JSON.parse(localStorage.getItem('review-helper-stores') || 'null') || defaults;
+let activeStore = 0, rating = 5, deferredPrompt;
+
+const menuWords = ['감자튀김','닭강정','치즈볼','볶음밥','떡볶이','치킨','피자','족발','보쌈','국밥','김밥','초밥','라면','파스타','버거','샐러드','튀김','갈비','삼겹살','덮밥','찜','탕','면'];
+const positivePatterns = [
+ ['crisp',/(감자튀김|튀김|치즈볼).{0,12}(바삭|바삭바삭)/], ['soft',/(닭|고기|치킨|면).{0,12}(부드럽|쫄깃)/], ['sauce',/(소스|양념).{0,12}(취향|제 스타일|입맛|맛있|좋)/],
+ ['taste',/(맛있|맛나|존맛|최고|간이 좋|풍미|고소|담백|신선)/], ['quantity',/(양이? (많|푸짐|넉넉)|푸짐|넉넉|양 많)/], ['price',/(가성비|가격.{0,8}(좋|착하|괜찮)|저렴)/],
+ ['delivery',/(배달.{0,10}(빠르|빨리|좋|만족)|빨리 왔|일찍 왔)/], ['packaging',/(포장.{0,10}(깔끔|좋|꼼꼼)|꼼꼼하게.{0,5}포장)/], ['service',/(친절|서비스.{0,10}(좋|감사)|사장님.{0,10}(친절|좋)|직원.{0,10}(친절|좋))/]
+];
+const negativePatterns = [
+ ['delivery',/(배달.{0,12}(늦|느리|오래|실망|아쉽)|너무 늦|한참.{0,5}걸)/], ['packaging',/(포장.{0,12}(새|터지|엉망|아쉽)|국물.{0,8}샜)/], ['missing',/(누락|안 왔|빠졌|없었|안 넣)/],
+ ['temperature',/(식었|차갑|미지근)/], ['quality',/(눅눅|탔|상했|맛없|별로|실망|아쉽|짜|싱겁)/], ['service',/(불친절|응대.{0,10}(별로|아쉽)|기분.{0,10}나쁘)/]
+];
+const unique = items => [...new Set(items)];
+const hasMatch = (text, pattern) => { pattern.lastIndex = 0; return pattern.test(text); };
+function analyze(text) {
+ const positive = positivePatterns.filter(([,p])=>hasMatch(text,p)).map(([id])=>id);
+ const negative = negativePatterns.filter(([,p])=>hasMatch(text,p)).map(([id])=>id);
+ return {menus:menuWords.filter(menu=>text.includes(menu)).slice(0,3),positive:unique(positive),negative:unique(negative),revisit:/다음(에|에도)?.{0,10}(주문|시킬|갈|방문)|또 (주문|시킬|갈|먹)|재주문|재방문/.test(text)};
+}
+function renderStores() {
+ $('#storeTabs').innerHTML=stores.map((store,i)=>`<button class="store-tab ${i===activeStore?'active':''}" data-i="${i}">${store.name||`가게 ${i+1}`}</button>`).join('');
+ $('#storeName').value=stores[activeStore].name; $('#storeNote').value=stores[activeStore].note;
+ document.querySelectorAll('.store-tab').forEach(button=>button.onclick=()=>{activeStore=+button.dataset.i;renderStores()});
+}
+function renderStars() {
+ $('#stars').innerHTML=[1,2,3,4,5].map(n=>`<button class="star ${n<=rating?'selected':''}" aria-label="${n}점">★</button>`).join('');
+ document.querySelectorAll('.star').forEach((button,i)=>button.onclick=()=>{rating=i+1;renderStars()});
+}
+function positiveSentence(a) {
+ const p=a.positive, menu=a.menus[0]||'';
+ if(p.includes('crisp')) return '감자튀김의 바삭한 식감까지 알아봐 주셔서 뿌듯합니다.';
+ if(p.includes('soft')&&p.includes('sauce')) return '부드러운 식감과 소스가 입맛에 맞으셨다니 정말 기쁩니다.';
+ if(p.includes('soft')) return '부드러운 식감으로 드셨다니 다행입니다.';
+ if(p.includes('sauce')) return '소스가 입맛에 잘 맞으셨다니 저희도 기분이 좋습니다.';
+ if(p.includes('taste')&&p.includes('quantity')) return `${menu?menu+' ':''}맛과 넉넉한 양을 함께 좋게 봐주셨다니 큰 힘이 됩니다.`;
+ if(p.includes('taste')) return `${menu?menu+' ':''}맛있게 드셨다니 준비한 보람이 큽니다.`;
+ if(p.includes('quantity')) return '양을 넉넉하게 느껴주셨다니 다행입니다.';
+ if(p.includes('price')) return '가격까지 만족스럽게 봐주셔서 감사합니다.';
+ if(p.includes('delivery')) return '배달도 만족스럽게 받아보셨다니 다행입니다.';
+ if(p.includes('packaging')) return '포장 상태를 꼼꼼히 봐주셔서 감사합니다.';
+ if(p.includes('service')) return '친절하게 느껴주셨다니 저희도 기분이 좋습니다.';
+ return '';
+}
+function negativeSentence(a) {
+ const p=a.negative;
+ if(p.includes('delivery')) return '배달이 늦어 기다리게 해드린 점 진심으로 죄송합니다.';
+ if(p.includes('missing')) return '주문 구성에 누락이 있어 불편을 드린 점 죄송합니다.';
+ if(p.includes('packaging')) return '포장 문제로 불편을 드린 점 진심으로 죄송합니다.';
+ if(p.includes('temperature')) return '음식이 식은 상태로 도착해 실망을 드린 점 죄송합니다.';
+ if(p.includes('quality')) return '음식 상태가 기대에 미치지 못해 불편을 드린 점 죄송합니다.';
+ if(p.includes('service')) return '응대에서 불편을 드린 점 진심으로 죄송합니다.';
+ return '';
+}
+function closing(tone, negative) {
+ if(negative) return tone==='calm'?'말씀해 주신 부분은 꼼꼼히 확인해 개선하겠습니다.':'같은 불편이 없도록 꼼꼼히 살피고 개선하겠습니다.';
+ if(tone==='bright') return '다음에도 맛있게 드실 수 있게 정성껏 준비해둘게요 😊';
+ if(tone==='calm') return '다음에도 만족스러운 한 끼가 되도록 정성껏 준비하겠습니다.';
+ return '다음에도 반갑게 맞이하겠습니다 😊';
+}
+function generate() {
+ const text=$('#reviewText').value.trim();
+ if(!text){$('#result').value='별점으로 마음 남겨주셔서 감사합니다.';return;}
+ const a=analyze(text), positive=positiveSentence(a), negative=negativeSentence(a), sentences=[];
+ if(negative){sentences.push(negative,closing($('#tone').value,true));if(positive)sentences.push(positive);}
+ else if(positive) sentences.push(positive);
+ else sentences.push(rating>=4?'남겨주신 좋은 리뷰 감사히 읽었습니다.':'남겨주신 평가를 가볍게 넘기지 않고 더 세심히 살피겠습니다.');
+ if(a.revisit)sentences.push('다음 주문도 반갑게 기다리고 있겠습니다.');
+ else if(!negative&&(a.positive.length||rating>=4))sentences.push(closing($('#tone').value,false));
+ const limit=$('#replyLength').value==='short'?2:$('#replyLength').value==='medium'?3:4;
+ $('#result').value=sentences.slice(0,limit).join(' ');
+}
+$('#saveStore').onclick=()=>{stores[activeStore]={name:$('#storeName').value.trim(),note:$('#storeNote').value.trim()};localStorage.setItem('review-helper-stores',JSON.stringify(stores));renderStores();alert('가게 정보를 저장했습니다.');};
+$('#generate').onclick=generate;
+$('#copy').onclick=async()=>{if(!$('#result').value.trim())return;await navigator.clipboard.writeText($('#result').value);$('#copy').textContent='복사됨';setTimeout(()=>$('#copy').textContent='복사',1200);};
+$('#reviewImage').onchange=e=>{const f=e.target.files[0];if(!f)return;$('#imagePreview').src=URL.createObjectURL(f);$('#imageArea').hidden=false;};
+$('#ocrButton').onclick=async()=>{if(!window.Tesseract){$('#ocrStatus').textContent='OCR 모듈을 불러오지 못했어요. 리뷰를 직접 입력해 주세요.';return;}try{$('#ocrStatus').textContent='이미지에서 글자를 읽는 중이에요…';const result=await Tesseract.recognize($('#reviewImage').files[0],'kor+eng');$('#reviewText').value=result.data.text.trim();$('#ocrStatus').textContent='인식 완료. 문장을 확인·수정한 뒤 생성해 주세요.';}catch{$('#ocrStatus').textContent='인식에 실패했어요. 리뷰를 직접 입력해 주세요.';}};
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('#installButton').hidden=false;});
+$('#installButton').onclick=async()=>{deferredPrompt.prompt();await deferredPrompt.userChoice;$('#installButton').hidden=true;};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');renderStores();renderStars();
 const $=s=>document.querySelector(s);
 const defaults=[{name:'',note:''},{name:'',note:''},{name:'',note:''}];
 let stores=JSON.parse(localStorage.getItem('review-helper-stores')||'null')||defaults,activeStore=0,rating=5,deferredPrompt,history=[];
