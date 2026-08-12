@@ -2,7 +2,9 @@ const $ = s => document.querySelector(s);
 const defaults = [{name:'',note:''},{name:'',note:''},{name:'',note:''}];
 let stores = JSON.parse(localStorage.getItem('review-helper-stores') || 'null') || defaults;
 let activeStore = 0, rating = 5, deferredPrompt;
-let replyHistory = [];
+let replyHistory = JSON.parse(localStorage.getItem('review-helper-reply-history') || '[]');
+let previousReply = '';
+let variationId = Number(localStorage.getItem('review-helper-variation-id') || 0);
 const emoji = { happy:['😊','😆','🥹','💛','🍀','✨','🙌','🫶','💜','🌷'], playful:['😆','ㅋㅋ','🥹','🙌','✨','💛'], calm:['😊','💛','🍀'] };
 const menuWords = ['감자튀김','김치찜','닭강정','치즈볼','볶음밥','떡볶이','치킨','피자','족발','보쌈','국밥','김밥','초밥','라면','파스타','버거','샐러드','튀김','갈비','삼겹살','덮밥','찜','탕','면'];
 const ignoreLine = /최근\s*리뷰|리뷰\s*노출\s*정책|사장님\s*댓글|최신순|사진\s*리뷰만\s*보기|신고하기|최근\s*\d+번\s*주문|리뷰\s*\d+|평균\s*별점|알뜰배달|오늘[,，]?|주문\s*내역|도움돼요|답글|메뉴\s*더보기/i;
@@ -86,6 +88,283 @@ function generate(){
     console.error('Reply generation failed',error);
   }
 }
+
+// 답글 생성은 단순 문구 조합이 아니라, 리뷰에서 확인된 사실을 먼저 뽑아
+// 길이·말투·최근 생성 이력에 맞춰 다른 구조로 다시 조합한다.
+const replyProfiles = {
+  warm: {
+    openers: ['마음에 남는 이야기를 들려주셔서 반가워요.', '리뷰를 읽는 내내 저희도 미소가 났어요.', '정성껏 남겨주신 말씀이 참 고맙습니다.', '기분 좋게 드신 모습이 전해져서 정말 반가워요.'],
+    closers: ['다음에도 맛있는 한 끼로 기억되도록 잘 준비할게요.', '또 생각나는 날 편하게 찾아주세요.', '다음 주문도 기분 좋게 챙겨드릴게요.'],
+    emojis: ['😊', '🌿', '💛', '🥰', '✨', '🍀', '🙌', '🤍']
+  },
+  calm: {
+    openers: ['남겨주신 내용을 꼼꼼히 확인했습니다.', '좋게 드신 부분을 구체적으로 알려주셔서 감사합니다.', '소중한 리뷰를 남겨주셔서 감사합니다.', '말씀해 주신 경험을 잘 읽었습니다.'],
+    closers: ['다음 주문도 만족스럽게 준비하겠습니다.', '앞으로도 한결같이 챙기겠습니다.', '더 좋은 식사가 되도록 신경 쓰겠습니다.'],
+    emojis: []
+  },
+  bright: {
+    openers: ['이야기만 들어도 저희까지 기분이 좋아져요!', '와, 이렇게 맛있게 드셨다니 정말 반가워요!', '리뷰에서 즐거움이 그대로 전해져요!', '반가운 소식에 저희도 힘이 납니다!'],
+    closers: ['다음에도 든든하고 맛있게 챙겨드릴게요!', '또 생각나는 날 반갑게 맞이할게요!', '다음 한 끼도 맛있게 준비해 둘게요!'],
+    emojis: ['😄', '✨', '💚', '🙌', '🎉', '🍀', '🤩', '💫']
+  }
+};
+
+function replyFactAnalysis(text) {
+  const has = pattern => pattern.test(text);
+  const facts = [];
+  const add = (id, count = 1) => { if (!facts.some(f => f.id === id)) facts.push({id, count}); };
+  if (has(/공기\s*밥|공기\s*[0-9]|공기가\s*(?:세|3)|밥\s*도둑/)) add('rice');
+  if (has(/싹싹|긁어\s*먹|깨끗하게\s*먹|다\s*먹었/)) add('cleanPlate');
+  if (has(/오랜만|다시\s*(?:주문|시켜|먹)|재주문|또\s*(?:주문|시켜|먹)/)) add('revisit');
+  if (has(/아이|애들|아기|가족|남편|아내|엄마|아빠|친구/)) add('together');
+  if (has(/매운|맵지만|매콤/)) add('spicy');
+  if (has(/양이|푸짐|든든|많아|배부/)) add('portion');
+  if (has(/사진|비주얼|먹음직/)) add('photo');
+  if (has(/맛있|맛나|최고|잘\s*먹|맛도\s*좋/)) add('taste');
+  if (has(/배달.{0,12}(빠르|빨리|좋|만족)|금방\s*(?:왔|도착)/)) add('delivery');
+  if (has(/포장.{0,12}(깔끔|좋|정성)|깔끔하게\s*포장/)) add('packaging');
+  if (has(/부드럽|촉촉|바삭|고소|국물|소스|양념|고기|김치찜|찌개/)) add('menu');
+  const complaints = [];
+  const bad = (id, pattern) => { if (has(pattern)) complaints.push(id); };
+  bad('missing', /누락|안\s*왔|빠졌|없길래|덜\s*왔/);
+  bad('delivery', /배달.{0,14}(늦|느리|오래|지연)|한참\s*기다/);
+  bad('temperature', /식었|차갑|미지근/);
+  bad('quality', /맛없|별로|실망|싸구려|냄새|상했|엉망|스팸인가/);
+  bad('packaging', /포장.{0,14}(새|터|망가|불편)|샜|쏟/);
+  bad('service', /친절하지|불친절|응대.{0,10}(별로|실망)/);
+  return { facts, complaints, sourceLong: text.replace(/\s/g, '').length > 95 };
+}
+
+const factLines = {
+  rice: {
+    warm: ['공기밥이 예상보다 많이 와서 놀라셨을 텐데, 김치찜과 맛있게 드셨다니 다행이에요.', '공기밥 이야기를 이렇게 재미있게 남겨주셔서 저희도 웃음이 났어요.'],
+    calm: ['공기밥 구성에 관해 남겨주신 경험과 맛있게 드신 말씀을 확인했습니다.', '공기밥까지 함께 맛있게 드셨다는 말씀에 감사드립니다.'],
+    bright: ['공기밥 이야기까지 남겨주셔서 저희도 빵 웃었어요!', '김치찜에 공기밥까지 맛있게 드셨다니 정말 든든하네요!']
+  },
+  cleanPlate: {
+    warm: ['아주 싹싹 드셨다는 말에서 맛있게 드신 모습이 그려져서 참 뿌듯해요.', '남김없이 드셨다는 한마디가 준비한 저희에게 큰 힘이 됩니다.'],
+    calm: ['남김없이 드셨다는 말씀을 보니 준비한 보람을 느낍니다.', '끝까지 맛있게 드셨다는 리뷰에 감사드립니다.'],
+    bright: ['싹싹 긁어드셨다니 이보다 반가운 칭찬이 있을까요!', '한 그릇 깔끔하게 드셨다는 말에 저희도 신이 납니다!']
+  },
+  revisit: {
+    warm: ['오랜만에 다시 찾아주셨는데도 맛있게 드셔서 더 반가워요.', '다시 생각나 찾아주신 마음이 참 고맙습니다.'],
+    calm: ['다시 찾아주신 주문에서 만족을 드린 것 같아 다행입니다.', '재주문해 주시고 좋은 말씀까지 남겨주셔서 감사합니다.'],
+    bright: ['다시 찾아주셨다니 정말 반가워요!', '오랜만의 주문도 만족스러우셨다니 저희도 기분이 좋습니다!']
+  },
+  together: {
+    warm: ['함께 드신 분들까지 맛있게 드셨다면 저희에게도 참 기쁜 소식이에요.', '같이 드시는 식사에 즐거움을 보탤 수 있었다니 반갑습니다.'],
+    calm: ['함께 드신 분들께도 좋은 식사가 된 것 같아 감사합니다.', '여러 분이 드신 식사에 만족을 드린 점을 반갑게 생각합니다.'],
+    bright: ['함께 드신 분들까지 맛있게 드셨다니 더없이 반가워요!', '다 같이 즐긴 한 끼가 되었다니 저희도 행복합니다!']
+  },
+  spicy: {
+    warm: ['매콤한 맛을 즐겁게 드셨다는 말씀에 마음이 놓여요.', '매운맛도 취향에 잘 맞으셨다니 다행입니다.'],
+    calm: ['매운맛을 좋게 평가해 주셔서 감사합니다.', '말씀해 주신 매콤한 맛의 만족도를 확인했습니다.'],
+    bright: ['매콤한 맛이 딱 맞으셨다니 신나요!', '매운맛까지 맛있게 즐겨주셨다니 정말 반갑습니다!']
+  },
+  portion: {
+    warm: ['든든하게 드셨다는 말씀에 저희도 기분이 좋아요.', '생각보다 넉넉하게 느껴지셨다니 뿌듯합니다.'],
+    calm: ['든든한 양으로 느껴지셨다니 다행입니다.', '양에 만족하셨다는 의견도 감사히 확인했습니다.'],
+    bright: ['든든하게 드셨다니 저희도 힘이 나요!', '푸짐하게 즐기셨다니 정말 반갑습니다!']
+  },
+  delivery: {
+    warm: ['배달까지 만족스럽게 받아보셨다니 마음이 놓여요.', '기다림 없이 잘 받아보셨다니 다행입니다.'],
+    calm: ['배달 과정까지 만족스러우셨다니 감사합니다.', '배송 경험을 좋게 말씀해 주셔서 감사합니다.'],
+    bright: ['배달까지 기분 좋게 받아보셨다니 다행이에요!', '맛있는 식사가 잘 도착했다니 정말 반갑습니다!']
+  },
+  packaging: {
+    warm: ['포장 상태까지 살펴봐 주셔서 감사해요.', '깔끔하게 받아보셨다니 마음이 놓입니다.'],
+    calm: ['포장 상태까지 만족하셨다니 감사합니다.', '포장에 관한 좋은 의견도 감사히 확인했습니다.'],
+    bright: ['포장까지 좋게 봐주셨다니 기뻐요!', '깔끔하게 받아보셨다니 정말 반갑습니다!']
+  },
+  menu: {
+    warm: ['메뉴의 맛과 식감을 좋게 느껴주셨다니 뿌듯해요.', '김치찜을 맛있게 드셨다는 말씀에 큰 힘을 얻습니다.'],
+    calm: ['메뉴를 맛있게 드셨다는 말씀에 감사드립니다.', '음식의 맛을 좋게 평가해 주셔서 감사합니다.'],
+    bright: ['메뉴를 맛있게 즐겨주셨다니 정말 기뻐요!', '맛있게 드셨다는 한마디에 저희도 힘이 납니다!']
+  },
+  taste: {
+    warm: ['맛있게 드셨다는 말씀이 저희에게 가장 큰 칭찬이에요.', '기분 좋게 드신 마음이 전해져서 반갑습니다.'],
+    calm: ['맛있게 드셨다는 평가에 감사드립니다.', '좋은 식사가 되었다는 말씀을 반갑게 확인했습니다.'],
+    bright: ['맛있게 드셨다니 저희도 정말 신나요!', '기분 좋게 드셨다는 말에 오늘도 힘이 납니다!']
+  }
+};
+
+const complaintLines = {
+  missing: ['구성품이 기대와 다르게 느껴져 당황하셨을 것 같아 죄송합니다.', '주문 구성과 관련해 불편을 드린 점 진심으로 사과드립니다.'],
+  delivery: ['오래 기다리게 해드려 불편하셨을 텐데 죄송합니다.', '배달 지연으로 식사 시간을 불편하게 해드린 점 사과드립니다.'],
+  temperature: ['음식이 알맞은 상태로 도착하지 않아 실망을 드린 점 죄송합니다.', '따뜻하게 드실 수 있도록 준비했어야 했는데 불편을 드렸습니다.'],
+  quality: ['음식의 맛과 상태가 기대에 미치지 못해 실망을 드린 점 죄송합니다.', '말씀해 주신 음식 상태로 불쾌한 경험을 드린 점 무겁게 받아들이겠습니다.'],
+  packaging: ['포장 상태로 불편을 드린 점 죄송합니다.', '포장 과정에서 만족스럽지 못한 경험을 드린 점 사과드립니다.'],
+  service: ['응대 과정에서 불편을 드린 점 죄송합니다.', '서비스로 좋지 않은 기분을 드린 점 진심으로 사과드립니다.']
+};
+
+const longDetailLines = {
+  rice: {
+    warm: '예상과 달랐던 공기밥 구성도 결국 김치찜과 함께 즐거운 식사 이야기가 된 것 같아 다행이에요.',
+    calm: '공기밥 구성에 관한 구체적인 경험까지 전해주셔서 주문 상황을 더 잘 이해할 수 있었습니다.',
+    bright: '공기밥 세 그릇 이야기가 김치찜을 얼마나 맛있게 드셨는지 더 생생하게 전해줘요!'
+  },
+  cleanPlate: {
+    warm: '한 끼를 끝까지 맛있게 드셨다는 표현은 음식 준비하는 사람에게 오래 남는 칭찬이에요.',
+    calm: '마지막까지 드셨다는 말씀은 음식의 만족도를 보여주는 소중한 의견으로 받아들이겠습니다.',
+    bright: '싹싹 드셨다는 말에 저희도 접시가 비워진 순간을 상상하며 기분 좋아졌어요!'
+  },
+  revisit: {
+    warm: '다시 찾으신 날에도 기분 좋게 드실 수 있었다니 저희에게 더 뜻깊은 리뷰입니다.',
+    calm: '재주문에서도 만족을 드릴 수 있도록 앞으로도 같은 기준으로 준비하겠습니다.',
+    bright: '다시 생각나 찾아주신 마음까지 정말 감사하고, 다음에도 반갑게 맞이할게요!'
+  },
+  together: {
+    warm: '함께한 식사 시간이 조금 더 즐거워졌다면 그것만으로도 저희에게 큰 보람이에요.',
+    calm: '함께 드신 식사가 만족스러웠다는 점을 소중하게 생각하겠습니다.',
+    bright: '같이 먹는 식사가 더 즐거웠다니 저희도 정말 신이 납니다!'
+  },
+  spicy: {
+    warm: '매콤한 맛을 좋아하시는 취향에 맞았다는 점도 저희에게는 반가운 소식이에요.',
+    calm: '매운맛에 관한 만족도도 앞으로 메뉴를 준비하는 데 참고하겠습니다.',
+    bright: '매콤함까지 취향에 딱 맞았다니 정말 신나는 칭찬이에요!'
+  },
+  portion: {
+    warm: '든든하게 드셨다는 말씀을 들으니 한 끼를 정성껏 준비한 보람을 느껴요.',
+    calm: '양에 관한 만족도 역시 다음 주문을 준비하는 데 큰 힘이 됩니다.',
+    bright: '든든한 한 끼가 되었다니 저희도 배부른 기분이에요!'
+  },
+  delivery: {
+    warm: '식사 자체뿐 아니라 받아보시는 과정도 편안하셨다니 마음이 놓입니다.',
+    calm: '배달 경험에 관한 좋은 의견도 소중히 확인했습니다.',
+    bright: '맛있는 식사가 기분 좋게 도착했다니 저희도 활짝 웃게 돼요!'
+  },
+  packaging: {
+    warm: '음식이 담긴 모습까지 신경 써서 봐주신 마음에 감사드립니다.',
+    calm: '포장 경험에 대한 의견도 꼼꼼히 확인하겠습니다.',
+    bright: '포장까지 칭찬해 주시니 저희도 더 힘내서 준비할 수 있어요!'
+  },
+  menu: {
+    warm: '김치찜 한 그릇이 좋은 기억으로 남은 것 같아 저희도 참 기쁩니다.',
+    calm: '메뉴의 맛을 좋게 평가해 주신 점을 감사히 확인했습니다.',
+    bright: '김치찜을 맛있게 즐기셨다니 다음에도 자신 있게 준비할게요!'
+  },
+  taste: {
+    warm: '맛있다는 솔직한 한마디가 오늘도 정성껏 준비할 힘이 됩니다.',
+    calm: '맛에 대한 긍정적인 평가는 감사한 마음으로 받아들이겠습니다.',
+    bright: '맛있다는 한마디가 오늘의 최고 응원이네요!'
+  }
+};
+
+function hashText(value) { return [...value].reduce((n, ch) => ((n * 31) + ch.charCodeAt(0)) >>> 0, 7); }
+function words(value) { return new Set((value.toLowerCase().match(/[가-힣a-z0-9]{2,}/g) || [])); }
+function overlap(a, b) { const x = words(a), y = words(b); let count = 0; x.forEach(w => { if (y.has(w)) count++; }); return count; }
+function recentContains(fragment) { return replyHistory.slice(0, 25).some(reply => reply.includes(fragment)) || previousReply.includes(fragment); }
+function variationPick(options, seed, recent = true) {
+  const ordered = options.map((value, index) => ({value, index, score: (index - seed % options.length + options.length) % options.length})).sort((a,b) => a.score - b.score);
+  const selected = recent ? (ordered.find(item => !recentContains(item.value)) || ordered[0]) : ordered[0];
+  return selected.value;
+}
+function replyIntro(name, tone, seed) {
+  const salutation = `${(name || '고객').trim()}님,`;
+  const kinds = [
+    `${salutation} ${variationPick(replyProfiles[tone].openers, seed)}`,
+    `${salutation} ${tone === 'calm' ? '리뷰를 남겨주셔서 감사합니다.' : '남겨주신 리뷰를 반갑게 읽었어요.'}`,
+    `${salutation} ${tone === 'bright' ? '반가운 리뷰에 저희도 기분이 좋아요!' : '소중한 말씀을 들려주셔서 감사합니다.'}`
+  ];
+  return variationPick(kinds, seed, false);
+}
+function factSentence(fact, tone, seed) {
+  const group = factLines[fact.id] || factLines.taste;
+  return variationPick(group[tone], seed + hashText(fact.id));
+}
+function emojiFor(tone, seed, negative) {
+  if (negative || tone === 'calm') return '';
+  return variationPick(replyProfiles[tone].emojis, seed + 3);
+}
+function compactSentences(parts) { return parts.filter(Boolean).map(p => p.replace(/\s+/g, ' ').trim()).filter((p,i,a) => a.indexOf(p) === i); }
+function trimToTarget(text, max) { return text.length <= max ? text : text.slice(0, max - 1).replace(/[ ,]+$/,'') + '…'; }
+
+function buildPositiveReply(name, text, tone, length, seed) {
+  const analysis = replyFactAnalysis(text);
+  let facts = analysis.facts;
+  if (!facts.length) facts = [{id:'taste'}];
+  const introLine = replyIntro(name, tone, seed);
+  const factTexts = facts.map((fact, index) => factSentence(fact, tone, seed + index * 11));
+  const closer = variationPick(replyProfiles[tone].closers, seed + 17);
+  const reaction = tone === 'calm'
+    ? '좋게 드신 경험을 구체적으로 전해주셔서 감사드립니다.'
+    : tone === 'bright'
+      ? '리뷰를 읽으니 저희도 덩달아 즐거워집니다!'
+      : '맛있게 드신 마음이 전해져 저희도 참 기뻐요.';
+  let parts;
+  if (length === 'short') {
+    parts = [introLine, factTexts[0]];
+    return trimToTarget(`${parts.join(' ')}${emojiFor(tone, seed, false) ? ` ${emojiFor(tone, seed, false)}` : ''}`, 75);
+  }
+  if (length === 'medium') {
+    parts = [introLine, factTexts[0], factTexts[1] || reaction, closer];
+    return trimToTarget(`${compactSentences(parts).join(' ')}${emojiFor(tone, seed, false) ? ` ${emojiFor(tone, seed, false)}` : ''}`, 190);
+  }
+  const longFacts = facts.slice(0, 3);
+  const details = longFacts.map(fact => longDetailLines[fact.id]?.[tone] || longDetailLines.taste[tone]);
+  parts = [introLine];
+  longFacts.forEach((fact, index) => {
+    parts.push(factSentence(fact, tone, seed + index * 11));
+    parts.push(details[index]);
+  });
+  parts.push(closer);
+  // 실제 리뷰의 단서가 적으면 없는 이야기를 붙여 길이만 늘리지 않는다.
+  if (facts.length < 3 && !analysis.sourceLong) parts = [introLine, factTexts[0], facts[1] ? factTexts[1] : reaction, closer];
+  return trimToTarget(`${compactSentences(parts).join(' ')}${emojiFor(tone, seed, false) ? ` ${emojiFor(tone, seed, false)}` : ''}`, 420);
+}
+
+function buildComplaintReply(name, text, tone, length, seed) {
+  const analysis = replyFactAnalysis(text);
+  const keys = analysis.complaints.length ? analysis.complaints : ['quality'];
+  const apology = variationPick(complaintLines[keys[0]], seed);
+  const second = keys[1] ? variationPick(complaintLines[keys[1]], seed + 9) : '';
+  const acknowledgement = '남겨주신 내용은 가볍게 넘기지 않고 조리와 포장 과정을 다시 확인해 같은 불편을 줄이도록 하겠습니다.';
+  const closing = tone === 'calm' ? '같은 불편이 반복되지 않도록 개선하겠습니다.' : '불편을 드린 점 다시 한번 죄송합니다.';
+  const head = `${(name || '고객').trim()}님,`;
+  const parts = length === 'short'
+    ? [head, apology]
+    : length === 'medium'
+      ? [head, apology, second || acknowledgement, closing]
+      : [head, apology, second || acknowledgement, acknowledgement, '기대하고 주문하셨을 식사를 만족스럽게 마무리하지 못한 점을 무겁게 받아들이겠습니다.', closing];
+  return trimToTarget(compactSentences(parts).join(' '), length === 'short' ? 75 : length === 'medium' ? 190 : 420);
+}
+
+function isComplaintReview(text) {
+  const analysis = replyFactAnalysis(text);
+  const serious = analysis.complaints.some(key => ['quality','delivery','temperature','packaging','service'].includes(key));
+  // "공기밥이 없길래"처럼 뒤에 즐거운 경험이 이어지는 5점 리뷰를 불만으로 오인하지 않는다.
+  return rating <= 2 || (serious && analysis.facts.length < 2 && rating <= 3);
+}
+
+function saveReplyHistory(result) {
+  previousReply = result;
+  replyHistory = [result, ...replyHistory.filter(reply => reply !== result)].slice(0, 50);
+  localStorage.setItem('review-helper-reply-history', JSON.stringify(replyHistory));
+}
+
+function generate(isReroll = false) {
+  const text = $('#reviewText').value.trim();
+  const name = $('#customerName').value.trim();
+  const tone = $('#tone').value;
+  const length = $('#replyLength').value;
+  if (!text) {
+    $('#result').value = `${(name || '고객').trim()}님, 리뷰 내용을 입력하거나 이미지 글자 읽기를 먼저 실행해 주세요.`;
+    return;
+  }
+  const source = `${name}|${text}|${tone}|${length}`;
+  let chosen = '';
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const seed = hashText(source) + variationId + attempt * 37 + (isReroll ? 101 : 0);
+    const negative = isComplaintReview(text);
+    const candidate = negative ? buildComplaintReply(name, text, tone, length, seed) : buildPositiveReply(name, text, tone, length, seed);
+    if (!replyHistory.includes(candidate) && (!previousReply || overlap(candidate, previousReply) < 7)) { chosen = candidate; break; }
+    chosen = candidate;
+  }
+  variationId += 1;
+  localStorage.setItem('review-helper-variation-id', String(variationId));
+  saveReplyHistory(chosen);
+  $('#result').value = chosen;
+}
 function cleanOcrLine(line){ return line.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim(); }
 function cleanReviewText(text){
   return text
@@ -160,6 +439,68 @@ $('#generate').onclick=generate;
 $('#copy').onclick=async()=>{if(!$('#result').value.trim())return;await navigator.clipboard.writeText($('#result').value);$('#copy').textContent='복사됨 ✓';setTimeout(()=>$('#copy').textContent='복사',1200);};
 $('#reviewImage').onchange=e=>{const f=e.target.files[0];if(!f)return;$('#imagePreview').src=URL.createObjectURL(f);$('#imageArea').hidden=false;};
 $('#ocrButton').onclick=async()=>{if(!window.Tesseract){$('#ocrStatus').textContent='OCR 모듈을 불러오지 못했어요. 이미지 내용을 직접 입력해 주세요.';return;} try{const file=$('#reviewImage').files[0];$('#ocrStatus').textContent='리뷰 카드에서 닉네임·별점·리뷰 내용만 읽는 중이에요…';const ocrImage=await prepareOcrImage(file);const [result,stars]=await Promise.all([Tesseract.recognize(ocrImage,'kor+eng'),detectStarRating(file)]);const parsed=parseReviewOcr(result.data);if(!parsed.name){$('#ocrStatus').textContent='닉네임 영역을 한 번 더 확인하는 중이에요…';parsed.name=await recoverNickname(file,result.data);}if(parsed.name)$('#customerName').value=parsed.name;$('#reviewText').value=parsed.review||'';if(stars){rating=stars;renderStars();}$('#ocrStatus').textContent=parsed.review?`${parsed.name?'닉네임·':''}리뷰 내용${stars?`·${stars}점`:''}을 입력했어요. 확인 후 답글을 만들어 주세요.`:'리뷰 본문이 없는 카드예요. 닉네임과 별점만 입력했어요.';}catch{$('#ocrStatus').textContent='인식에 실패했어요. 이미지를 다시 선택하거나 직접 입력해 주세요.';}};
+function repairOcrReview(text) {
+  return (text || '')
+    .replace(/\b(?:Es|AZ|TR|HH|Zoid)\b\s*/gi, '')
+    .replace(/안\s+(?:오[는\s]*줄|[A-Za-z]{1,4})\s*알고/g, '안 오는 줄 알고')
+    .replace(/두\s*개/g, '두 개')
+    .replace(/세\s*개/g, '세 개')
+    .replace(/김치\s*찜\s*인분/g, '김치찜 1인분')
+    .replace(/공기\s*밥/g, '공기밥')
+    .replace(/\s*([,.!?ㅠ])\s*/g, '$1 ')
+    .replace(/\s+/g, ' ').trim();
+}
+function ocrCandidateScore(parsed, data) {
+  const review = parsed.review || '';
+  const korean = (review.match(/[가-힣]/g) || []).length;
+  const latinNoise = (review.match(/[A-Za-z]{2,}/g) || []).join(' ').replace(/(?:ok|tv|img)/gi, '').length;
+  const lines = (data.lines || []).length;
+  return korean * 3 + review.length + (parsed.name ? 18 : 0) + Math.min(lines, 12) - latinNoise * 4 - (review.length < 5 ? 40 : 0);
+}
+function ocrConfidence(parsed, data) {
+  const review = parsed.review || '';
+  const korean = (review.match(/[가-힣]/g) || []).length;
+  const noise = (review.match(/[A-Za-z]{2,}/g) || []).length;
+  const avgConfidence = (data.lines || []).length ? (data.lines || []).reduce((sum, line) => sum + (line.confidence || 0), 0) / data.lines.length : 0;
+  if (review.length >= 12 && korean >= 8 && noise === 0 && avgConfidence >= 55) return '높음';
+  return '확인 필요';
+}
+if($('#reroll')) $('#reroll').onclick=()=>generate(true);
+$('#ocrButton').onclick=async()=>{
+  const file=$('#reviewImage').files[0];
+  if(!file){$('#ocrStatus').textContent='리뷰 캡처 이미지를 먼저 선택해 주세요.';return;}
+  if(!window.Tesseract){$('#ocrStatus').textContent='OCR 모듈을 불러오지 못했어요. 이미지 내용을 직접 입력해 주세요.';return;}
+  try{
+    $('#ocrButton').disabled=true;
+    $('#ocrStatus').textContent='원본과 선명화 이미지를 함께 비교해 닉네임·별점·리뷰 본문만 읽는 중이에요…';
+    const enhanced=await prepareOcrImage(file);
+    const [originalResult, enhancedResult, stars]=await Promise.all([
+      Tesseract.recognize(file,'kor+eng'),
+      Tesseract.recognize(enhanced,'kor+eng'),
+      detectStarRating(file)
+    ]);
+    let original=parseReviewOcr(originalResult.data), enhancedParsed=parseReviewOcr(enhancedResult.data);
+    original.review=repairOcrReview(original.review);
+    enhancedParsed.review=repairOcrReview(enhancedParsed.review);
+    let parsed=ocrCandidateScore(original,originalResult.data)>=ocrCandidateScore(enhancedParsed,enhancedResult.data)?original:enhancedParsed;
+    let selectedData=parsed===original?originalResult.data:enhancedResult.data;
+    if(!parsed.name){
+      $('#ocrStatus').textContent='닉네임 영역을 한 번 더 확인하는 중이에요…';
+      parsed.name=await recoverNickname(file,selectedData);
+    }
+    if(parsed.name)$('#customerName').value=parsed.name;
+    $('#reviewText').value=parsed.review||'';
+    if(stars){rating=stars;renderStars();}
+    const confidence=ocrConfidence(parsed,selectedData);
+    const uncertain=confidence==='확인 필요'?' 일부 글자는 원본 이미지와 한 번 비교해 주세요.':'';
+    $('#ocrStatus').textContent=parsed.review
+      ? `${parsed.name?'닉네임·':''}리뷰 내용${stars?`·${stars}점`:''}을 입력했어요. 인식 신뢰도 ${confidence}.${uncertain}`
+      : '리뷰 본문을 확실히 찾지 못했어요. 닉네임과 별점만 입력했으니 본문을 직접 확인해 주세요.';
+  }catch(error){
+    console.error('OCR failed',error);
+    $('#ocrStatus').textContent='인식에 실패했어요. 이미지를 다시 선택하거나 직접 입력해 주세요.';
+  }finally{$('#ocrButton').disabled=false;}
+};
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('#installButton').hidden=false;});
 $('#installButton').onclick=async()=>{deferredPrompt.prompt();await deferredPrompt.userChoice;$('#installButton').hidden=true;};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');renderStores();renderStars();
