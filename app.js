@@ -80,7 +80,7 @@ function generate(){
 }
 function cleanOcrLine(line){ return line.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim(); }
 function cleanReviewText(text){
-  return text.replace(/\b(?:AZ|Zoid|HH|TR|as)\b\s*(?:=\s*[Il|])?/gi,' ').replace(/\s+/g,' ').trim();
+  return text.replace(/\bAZ\w*\s*=\s*[A-Za-z|]*\s*/gi,' ').replace(/\b(?:Zoid|HH|TR|as)\b\s*(?:=\s*[Il|])?/gi,' ').replace(/\s+/g,' ').trim();
 }
 function isName(line){ return /^[가-힣A-Za-z0-9][가-힣A-Za-z0-9._-]{1,19}$/.test(line) && !ignoreLine.test(line) && !/^(오늘|최근|리뷰|별점|주문)$/.test(line); }
 function findNickname(entries,allText=''){
