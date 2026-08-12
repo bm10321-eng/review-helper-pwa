@@ -43,14 +43,20 @@ function decorate(sentences,a,negative){ if(negative) return sentences.join(' ')
 function generate(){ const text=$('#reviewText').value.trim(), name=$('#customerName').value.trim(); if(!text){$('#result').value=`${intro(name)} 별점으로 남겨주신 마음 감사합니다 ${pick(emoji.calm)}`;return;} const a=analyze(text), bad=negativeReply(a), parts=[]; parts.push(intro(name)); if(bad){parts.push(bad); if(a.positive.length)parts.push(positiveReply(a,text));} else {parts.push(positiveReply(a,text)); parts.push(closing(a,$('#tone').value));} const limit=$('#replyLength').value==='short'?2:$('#replyLength').value==='medium'?3:4; $('#result').value=decorate(parts.slice(0,limit),a,Boolean(bad)); }
 function cleanOcrLine(line){ return line.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim(); }
 function isName(line){ return /^[가-힣A-Za-z0-9][가-힣A-Za-z0-9._-]{1,19}$/.test(line) && !ignoreLine.test(line) && !/^(오늘|최근|리뷰|별점|주문)$/.test(line); }
-function parseReviewOcr(raw){
-  const nicknameMatch=raw.match(/([가-힣A-Za-z0-9._-]{2,20})\s*[>〉]/); const lines=raw.split(/\r?\n/).map(cleanOcrLine).filter(Boolean); let name=nicknameMatch ? nicknameMatch[1] : '', start=-1;
-  if(nicknameMatch){ const nameLine=lines.find(line=>line.includes(nicknameMatch[0])); start=nameLine ? lines.indexOf(nameLine) : -1; }
-  for(let i=0;i<lines.length;i++){ const next=lines.slice(i+1,i+3).join(' '); if(isName(lines[i]) && /(최근\s*\d+번\s*주문|리뷰\s*\d+|평균\s*별점|오늘|별점|알뜰배달|★)/.test(next)){name=lines[i];start=i;break;} }
-  if(!name){ const candidate=lines.find(line=>isName(line)&&!/(김치찜|백반|치킨|피자|국밥)/.test(line)); if(candidate){name=candidate;start=lines.indexOf(candidate);} }
+function parseReviewOcr(data){
+  const entries=(data.lines||[]).map(line=>({text:cleanOcrLine(line.text||''),box:line.bbox||{x0:0,y0:0,x1:0,y1:0}})).filter(line=>line.text);
+  const allText=data.text||entries.map(line=>line.text).join('\n'); const nameHit=allText.match(/([가-힣A-Za-z0-9._-]{2,20})\s*[>〉]/);
+  let name=nameHit?nameHit[1]:'', nameLine=name?entries.find(line=>line.text.includes(name)):null;
+  if(!nameLine){nameLine=entries.find(line=>isName(line.text)&&entries.some(next=>next.box.y0>line.box.y0&&next.box.y0-line.box.y0<220&&/(리뷰\s*\d+|평균\s*별점|오늘|어제|별점|알뜰배달|한집배달|★)/.test(next.text)));if(nameLine)name=nameLine.text.replace(/[>〉].*/, '').trim();}
   const meta=/리뷰\s*\d+|평균\s*별점|최근\s*\d+번|오늘|어제|지난\s*달|알뜰배달|한집배달|별점|★|☆/;
-  let review=[]; for(let i=Math.max(start+1,0);i<lines.length;i++){const line=lines[i]; if(ignoreLine.test(line)||meta.test(line)||line===name||line.length<2)continue; if(/^(김치찜|치킨|피자|국밥|떡볶이|족발|보쌈|\d+(\.\d+)?인)/.test(line))break; review.push(line); }
-  return {name,review:review.join(' ').replace(/^[^가-힣A-Za-z]+/,'').replace(/\s+/g,' ').trim()};
+  const anchor=entries.filter(line=>meta.test(line.text)&&(!nameLine||line.box.y0>=nameLine.box.y0)).sort((a,b)=>b.box.y1-a.box.y1)[0];
+  if(!anchor)return {name,review:''};
+  const imageHeight=Math.max(...entries.map(line=>line.box.y1),anchor.box.y1); const maxStartGap=Math.max(90,imageHeight*.18);
+  const allowed=entries.filter(line=>line.box.y0>anchor.box.y1&&line.box.y0-anchor.box.y1<maxStartGap&&!meta.test(line.text)&&!ignoreLine.test(line.text)&&!/^(김치찜|치킨|피자|국밥|떡볶이|족발|보쌈|\d+(\.\d+)?인)/.test(line.text)).sort((a,b)=>a.box.y0-b.box.y0);
+  if(!allowed.length)return {name,review:''};
+  const first=allowed[0], height=Math.max(20,first.box.y1-first.box.y0); const review=[];
+  for(const line of allowed){if(line.box.y0-first.box.y0>height*4||review.length&&line.box.y0-review[review.length-1].box.y1>height*2.2)break;review.push(line);}
+  return {name,review:review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim()};
 }
 async function detectStarRating(file){
   const bitmap=await createImageBitmap(file); const canvas=document.createElement('canvas'); const scale=Math.min(1,900/bitmap.width); canvas.width=Math.round(bitmap.width*scale); canvas.height=Math.round(bitmap.height*scale); const ctx=canvas.getContext('2d',{willReadFrequently:true}); ctx.drawImage(bitmap,0,0,canvas.width,canvas.height); const {data}=ctx.getImageData(0,Math.round(canvas.height*.18),canvas.width,Math.round(canvas.height*.52)); const w=canvas.width,h=Math.round(canvas.height*.52), seen=new Uint8Array(w*h), groups=[]; const yellow=i=>data[i]>175&&data[i+1]>115&&data[i+1]<210&&data[i+2]<125&&data[i]-data[i+2]>85;
@@ -61,7 +67,7 @@ $('#saveStore').onclick=()=>{stores[activeStore]={name:$('#storeName').value.tri
 $('#generate').onclick=generate;
 $('#copy').onclick=async()=>{if(!$('#result').value.trim())return;await navigator.clipboard.writeText($('#result').value);$('#copy').textContent='복사됨 ✓';setTimeout(()=>$('#copy').textContent='복사',1200);};
 $('#reviewImage').onchange=e=>{const f=e.target.files[0];if(!f)return;$('#imagePreview').src=URL.createObjectURL(f);$('#imageArea').hidden=false;};
-$('#ocrButton').onclick=async()=>{if(!window.Tesseract){$('#ocrStatus').textContent='OCR 모듈을 불러오지 못했어요. 이미지 내용을 직접 입력해 주세요.';return;} try{const file=$('#reviewImage').files[0];$('#ocrStatus').textContent='리뷰 카드에서 닉네임·별점·리뷰 내용만 읽는 중이에요…';const [result,stars]=await Promise.all([Tesseract.recognize(file,'kor+eng'),detectStarRating(file)]);const parsed=parseReviewOcr(result.data.text);if(parsed.name)$('#customerName').value=parsed.name;if(parsed.review)$('#reviewText').value=parsed.review;if(stars){rating=stars;renderStars();}$('#ocrStatus').textContent=parsed.review?`닉네임·리뷰 내용${stars?`·${stars}점`:''}을 입력했어요. 확인 후 답글을 만들어 주세요.`:'리뷰 문장을 찾지 못했어요. 닉네임과 리뷰 내용을 직접 확인해 주세요.';}catch{$('#ocrStatus').textContent='인식에 실패했어요. 이미지를 다시 선택하거나 직접 입력해 주세요.';}};
+$('#ocrButton').onclick=async()=>{if(!window.Tesseract){$('#ocrStatus').textContent='OCR 모듈을 불러오지 못했어요. 이미지 내용을 직접 입력해 주세요.';return;} try{const file=$('#reviewImage').files[0];$('#ocrStatus').textContent='리뷰 카드에서 닉네임·별점·리뷰 내용만 읽는 중이에요…';const [result,stars]=await Promise.all([Tesseract.recognize(file,'kor+eng'),detectStarRating(file)]);const parsed=parseReviewOcr(result.data);if(parsed.name)$('#customerName').value=parsed.name;$('#reviewText').value=parsed.review||'';if(stars){rating=stars;renderStars();}$('#ocrStatus').textContent=parsed.review?`닉네임·리뷰 내용${stars?`·${stars}점`:''}을 입력했어요. 확인 후 답글을 만들어 주세요.`:'리뷰 본문이 없는 카드예요. 닉네임과 별점만 입력했어요.';}catch{$('#ocrStatus').textContent='인식에 실패했어요. 이미지를 다시 선택하거나 직접 입력해 주세요.';}};
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('#installButton').hidden=false;});
 $('#installButton').onclick=async()=>{deferredPrompt.prompt();await deferredPrompt.userChoice;$('#installButton').hidden=true;};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');renderStores();renderStars();
