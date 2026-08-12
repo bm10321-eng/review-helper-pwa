@@ -22,7 +22,7 @@ function renderStores(){ $('#storeTabs').innerHTML=stores.map((s,i)=>`<button cl
 function renderStars(){ $('#stars').innerHTML=[1,2,3,4,5].map(n=>`<button class="star ${n<=rating?'selected':''}" aria-label="${n}점">★</button>`).join(''); document.querySelectorAll('.star').forEach((b,i)=>b.onclick=()=>{rating=i+1;renderStars();}); }
 function analyze(text){
   const match=(p)=>{p.lastIndex=0;return p.test(text);};
-  return { menus:menuWords.filter(m=>text.includes(m)).slice(0,3), positive:positiveRules.filter(([,p])=>match(p)).map(([id])=>id), negative:negativeRules.filter(([,p])=>match(p)).map(([id])=>id), playful:/ㅋㅋ|ㅎㅎ|크흣|존맛|순삭|미쳤|대박|완전/.test(text), revisit:/다음(에|에도)?.{0,10}(주문|시킬|갈|방문)|또\s*(주문|시킬|갈|먹)|재주문|재방문|정착/.test(text), child:/(아이|애들|아기|아이가|아이들)/.test(text), family:/(가족|남편|아내|엄마|아빠|친구)/.test(text), first:/(첫 주문|처음 주문|첫번째)/.test(text), surprise:/(생각보다|놀랐|깜짝|엄청|진짜)/.test(text), long:text.length>90 };
+  return { menus:menuWords.filter(m=>text.includes(m)).slice(0,3), positive:positiveRules.filter(([,p])=>match(p)).map(([id])=>id), negative:negativeRules.filter(([,p])=>match(p)).map(([id])=>id), playful:/ㅋㅋ|ㅎㅎ|크흣|존맛|순삭|미쳤|대박|완전/.test(text), revisit:/다음(에|에도)?.{0,10}(주문|시킬|갈|방문)|또\s*(주문|시킬|갈|먹)|재주문|재방문|정착/.test(text), child:/(아이|애들|아기|아이가|아이들)/.test(text), family:/(가족|남편|아내|엄마|아빠|친구)/.test(text), first:/(첫 주문|처음 주문|첫번째)/.test(text), surprise:/(생각보다|놀랐|깜짝|엄청|진짜)/.test(text), rice:/(공기밥|공기\s*\d|밥\s*\d|공기가\s*세)/.test(text), cleanPlate:/(싹싹|긁어.?먹|다 먹|완식)/.test(text), long:text.length>90 };
 }
 function intro(name){ return `${(name || '고객').trim()}님,`; }
 const toneProfiles={
@@ -34,6 +34,8 @@ function fresh(options){const unseen=options.filter(option=>!replyHistory.some(r
 function positivePoints(a,tone){
   const p=toneProfiles[tone], menu=a.menus[0]||'';
   const points=[];
+  if(a.rice)points.push(tone==='calm'?'공기밥 수량이 예상과 달라 당황하셨을 텐데, 맛있게 드셔주셨다니 다행입니다.':fresh(['공기밥이 세 개나 와서 뜻밖의 한 끼가 되셨겠네요ㅎㅎ 그래도 싹싹 드셨다니 저희도 웃음이 납니다!','공기밥이 예상보다 많이 와서 놀라셨겠어요. 김치찜과 맛있게 드셨다니 다행이에요!']));
+  if(a.cleanPlate)points.push(tone==='calm'?'남김없이 드셔주셨다는 말씀에 준비한 보람을 느낍니다.':fresh(['싹싹 긁어 드셨다는 대목에서 정말 맛있게 드신 게 느껴져요!','끝까지 맛있게 드셔주셨다니 이건 정말 뿌듯하네요!']));
   if(a.child)points.push(tone==='calm'?'아이들이 맛있게 드셨다니 특히 반갑습니다.':fresh(['아이들이 잘 먹었다는 말이 제일 반갑네요!','아이들 입맛에도 맞았다니 이건 정말 기분 좋은 소식이에요!']));
   if(a.family)points.push(tone==='calm'?'함께 드신 분들까지 좋게 드셨다니 감사드립니다.':fresh(['함께 드신 분들도 좋아해 주셨다니 더없이 반갑네요!','같이 드신 분들까지 맛있게 즐기셨다니 저희도 기분이 좋아집니다.']));
   if(a.first)points.push(tone==='calm'?'첫 주문이 좋은 기억으로 남으셨다니 다행입니다.':fresh(['처음 찾아주신 날에 입맛에 맞으셨다니 특히 반갑네요!','첫 주문부터 좋게 드셔주셨다니 마음이 놓입니다!']));
@@ -60,6 +62,7 @@ function negativePoints(a,tone,text){
   points.push(formal?'기대하고 주문하셨을 텐데 만족스럽게 드시지 못하신 점을 무겁게 받아들이겠습니다.':fresh(['기대하고 주문하셨을 텐데 식사 시간 자체가 불편하게 남으셨을 것 같아 마음이 무겁습니다.','드시는 내내 아쉬움이 남으셨을 생각에 죄송한 마음입니다.']));
   points.push(formal?'남겨주신 내용은 조리와 포장 과정을 다시 확인하는 데 반영하겠습니다.':fresh(['남겨주신 내용은 가볍게 넘기지 않고 조리와 포장 과정을 다시 살피겠습니다.','말씀해 주신 부분은 바로 확인해서 같은 아쉬움이 남지 않도록 하겠습니다.']));
   points.push(formal?'다시 불편을 드리지 않도록 더 세심히 점검하겠습니다.':fresh(['다음에는 이런 실망을 드리지 않도록 더 꼼꼼히 확인하겠습니다.','불편을 드린 점 다시 한 번 사과드립니다.']));
+  points.push(formal?'말씀해주신 경험을 바탕으로 더 나은 주문 경험이 되도록 개선하겠습니다.':fresh(['이번 리뷰를 통해 놓친 부분을 다시 살피겠습니다.','남겨주신 경험이 헛되지 않도록 바로 점검하겠습니다.']));
   if(a.positive.length)points.push(formal?'좋게 드신 부분이 있었다는 말씀도 함께 새기겠습니다.':'좋게 보신 부분이 있었어도 이번 주문이 만족스럽지 못했다는 점을 더 무겁게 받아들이겠습니다.');
   return unique(points);
 }
@@ -67,20 +70,31 @@ function decorate(parts,tone,negative){if(negative||!toneProfiles[tone].icons.le
 function generate(){
   const text=$('#reviewText').value.trim(), name=$('#customerName').value.trim(), tone=$('#tone').value, length=$('#replyLength').value;
   if(!text){$('#result').value=`${intro(name)} 별점으로 남겨주신 마음 고맙습니다.`;return;}
-  const a=analyze(text), negative=a.negative.length>0, desired={short:1,medium:3,long:5}[length];
-  let result='';
-  for(let attempt=0;attempt<12;attempt++){
-    const candidates=negative?negativePoints(a,tone,text):[...positivePoints(a,tone),toneProfiles[tone].generic[attempt%2],toneProfiles[tone].thanks[attempt%2],...(a.revisit?[toneProfiles[tone].revisit[attempt%2]]:[toneProfiles[tone].finish[attempt%2]])];
-    const body=unique(candidates).slice(0,desired);
-    result=decorate([intro(name),...body],tone,negative);
-    if(!replyHistory.includes(result))break;
+  try{
+    const a=analyze(text), negative=a.negative.length>0, desired={short:1,medium:3,long:5}[length]||3;
+    let result='';
+    for(let attempt=0;attempt<12;attempt++){
+      const candidates=negative?negativePoints(a,tone,text):[...positivePoints(a,tone),toneProfiles[tone].generic[attempt%2],toneProfiles[tone].thanks[attempt%2],...(a.revisit?[toneProfiles[tone].revisit[attempt%2]]:[toneProfiles[tone].finish[attempt%2]])];
+      const body=unique(candidates.filter(Boolean)).slice(0,desired);
+      result=decorate([intro(name),...body],tone,negative);
+      if(!replyHistory.includes(result))break;
+    }
+    replyHistory=[result,...replyHistory].slice(0,50);
+    $('#result').value=result;
+  }catch(error){
+    $('#result').value=`${intro(name)} 남겨주신 내용을 확인했습니다. 답글을 다시 한 번 만들어 주세요.`;
+    console.error('Reply generation failed',error);
   }
-  replyHistory=[result,...replyHistory].slice(0,50);
-  $('#result').value=result;
 }
 function cleanOcrLine(line){ return line.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim(); }
 function cleanReviewText(text){
-  return text.replace(/\bAZ\w*\s*=\s*[A-Za-z|]*\s*/gi,' ').replace(/\b(?:Zoid|HH|TR|as)\b\s*(?:=\s*[Il|])?/gi,' ').replace(/\s+/g,' ').trim();
+  return text
+    .replace(/\bAZ\w*\s*=\s*[A-Za-z|]*\s*/gi,' ')
+    .replace(/\b(?:Zoid|HH|TR|as)\b\s*(?:=\s*[Il|])?/gi,' ')
+    .replace(/공기밥\s*얘기가\s*없길래\s*안\s*(?:[A-Za-z=|]+\s*)?알고/g,'공기밥 얘기가 없길래 안 오는 줄 알고')
+    .replace(/김치\s*찜\s*인분/g,'김치찜 1인분')
+    .replace(/공기가\s*세개가/g,'공기가 세 개가')
+    .replace(/\s+/g,' ').trim();
 }
 function isName(line){ return /^[가-힣A-Za-z0-9][가-힣A-Za-z0-9._-]{1,19}$/.test(line) && !ignoreLine.test(line) && !/^(오늘|최근|리뷰|별점|주문)$/.test(line); }
 function findNickname(entries,allText=''){
