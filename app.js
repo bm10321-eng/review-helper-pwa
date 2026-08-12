@@ -56,7 +56,8 @@ function parseReviewOcr(data){
   if(!allowed.length)return {name,review:''};
   const first=allowed[0], height=Math.max(20,first.box.y1-first.box.y0); const review=[];
   for(const line of allowed){if(line.box.y0-first.box.y0>height*4||review.length&&line.box.y0-review[review.length-1].box.y1>height*2.2)break;review.push(line);}
-  return {name,review:review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim()};
+  const text=review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim().replace(/\s+[0-9Il|,.'`]+$/,'').trim();
+  return {name,review:text};
 }
 async function detectStarRating(file){
   const bitmap=await createImageBitmap(file); const canvas=document.createElement('canvas'); const scale=Math.min(1,900/bitmap.width); canvas.width=Math.round(bitmap.width*scale); canvas.height=Math.round(bitmap.height*scale); const ctx=canvas.getContext('2d',{willReadFrequently:true}); ctx.drawImage(bitmap,0,0,canvas.width,canvas.height); const {data}=ctx.getImageData(0,Math.round(canvas.height*.18),canvas.width,Math.round(canvas.height*.52)); const w=canvas.width,h=Math.round(canvas.height*.52), seen=new Uint8Array(w*h), groups=[]; const yellow=i=>data[i]>175&&data[i+1]>115&&data[i+1]<210&&data[i+2]<125&&data[i]-data[i+2]>85;
