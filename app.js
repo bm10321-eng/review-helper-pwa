@@ -116,7 +116,7 @@ function parseReviewOcr(data){
     if(line.box.y0-previous.box.y1>height*2.8)break;
     review.push(line);
   }
-  const text=review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim().replace(/\s+[0-9Il|,.'`]+$/,'').trim();
+  const text=review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim().replace(/\s+(?:[0-9Il|,.'`()%]+(?:\s+[0-9Il|,.'`()%]+)*)$/,'').trim();
   return {name,review:text};
 }
 async function recoverNickname(file,data){
