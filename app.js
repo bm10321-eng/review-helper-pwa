@@ -451,7 +451,7 @@ function repairOcrReview(text) {
     .replace(/ㅠ\s*ㅠ\s*ㅠ\s*ㅠ?/g, 'ㅠㅠㅠㅠ')
     .replace(/아주\s*(?:4+\s*)?굽어먹었습니다/g, '아주 싹싹 긁어먹었습니다')
     .replace(/\s*([,.!?ㅠ])\s*/g, '$1 ')
-    .replace(/\s+/g, ' ').trim();
+    .replace(/\s+/g, ' ').replace(/ㅠ(?:\s*ㅠ)+/g, 'ㅠㅠㅠㅠ').trim();
 }
 function ocrCandidateScore(parsed, data) {
   const review = parsed.review || '';
