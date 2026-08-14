@@ -116,9 +116,11 @@ function replyFactAnalysis(text) {
   const has = pattern => pattern.test(text);
   const facts = [];
   const add = (id, count = 1) => { if (!facts.some(f => f.id === id)) facts.push({id, count}); };
+  if (has(/(?:처음|첫)\s*(?:주문|시켜|시켜봤|먹어)/)) add('firstOrder');
+  if (has(/(?:다음|또|다시)\s*(?:에\s*)?(?:주문|시킬|시켜|먹을)|다음.{0,12}(?:주문|시킬)|또.{0,12}(?:주문|시킬)/)) add('futureOrder');
+  if (has(/오랜만|재주문|재방문|다시\s*(?:주문했|시켜\s*먹|먹었)/)) add('returnVisit');
   if (has(/공기\s*밥|공기\s*[0-9]|공기가\s*(?:세|3)|밥\s*도둑/)) add('rice');
   if (has(/싹싹|긁어\s*먹|깨끗하게\s*먹|다\s*먹었/)) add('cleanPlate');
-  if (has(/오랜만|재주문|재방문|다시\s*(?:주문|시켜|시킬|먹)|또\s*(?:주문|시켜|시킬|먹)|다음.{0,10}(?:주문|시킬)/)) add('revisit');
   if (has(/아이|애들|아기|가족|남편|아내|엄마|아빠|친구/)) add('together');
   if (has(/매운|맵지만|매콤/)) add('spicy');
   if (has(/양이|푸짐|든든|많아|배부/)) add('portion');
@@ -142,6 +144,21 @@ function replyFactAnalysis(text) {
 }
 
 const factLines = {
+  firstOrder: {
+    warm: ['처음 주문해 보셨는데 좋은 선택이었다고 해주시니 정말 반가워요.', '첫 주문부터 입맛에 맞으셨다니 준비한 보람이 큽니다.'],
+    calm: ['첫 주문을 좋게 평가해 주셔서 감사합니다.', '처음 주문에서 만족을 드린 것 같아 감사드립니다.'],
+    bright: ['첫 주문부터 마음에 드셨다니 정말 신나요!', '처음 시켜보셨는데 좋은 선택이었다니 저희도 기분이 좋아요!']
+  },
+  futureOrder: {
+    warm: ['다음에도 주문해 주시겠다는 한마디가 저희에게 큰 힘이 됩니다.', '또 시켜주신다는 말씀에 다음 한 끼도 더 잘 준비하고 싶어져요.'],
+    calm: ['다음에도 주문해 주시겠다는 말씀에 감사드립니다.', '재주문 의사를 전해주셔서 감사한 마음입니다.'],
+    bright: ['다음에도 주문해 주신다니 벌써 반갑습니다!', '또 시켜주신다니 정말 힘이 나요!']
+  },
+  returnVisit: {
+    warm: ['오랜만에 다시 주문하셨는데도 만족하셨다니 더 반가워요.', '다시 찾아주신 주문이 좋은 식사가 된 것 같아 기쁩니다.'],
+    calm: ['다시 주문해 주시고 좋은 말씀까지 남겨주셔서 감사합니다.', '재방문에서도 만족을 드린 것 같아 감사드립니다.'],
+    bright: ['다시 찾아주셨다니 정말 반가워요!', '재주문에도 만족하셨다니 저희도 신이 납니다!']
+  },
   rice: {
     warm: ['공기밥이 예상보다 많이 와서 놀라셨을 텐데, 김치찜과 맛있게 드셨다니 다행이에요.', '공기밥 이야기를 이렇게 재미있게 남겨주셔서 저희도 웃음이 났어요.'],
     calm: ['공기밥 구성에 관해 남겨주신 경험과 맛있게 드신 말씀을 확인했습니다.', '공기밥까지 함께 맛있게 드셨다는 말씀에 감사드립니다.'],
@@ -219,6 +236,21 @@ const complaintLines = {
 };
 
 const longDetailLines = {
+  firstOrder: {
+    warm: '첫 주문의 설렘이 좋은 기억으로 남았다는 뜻으로 받아들여져 저희에게도 뜻깊어요.',
+    calm: '처음 주문하신 경험을 좋게 남겨주신 점을 소중히 생각하겠습니다.',
+    bright: '첫 주문부터 이렇게 반가운 후기를 남겨주시니 저희도 큰 응원을 받아요!'
+  },
+  futureOrder: {
+    warm: '다음 주문에도 오늘처럼 기분 좋은 식사가 되도록 정성껏 준비할게요.',
+    calm: '다음 주문에서도 같은 만족을 드릴 수 있도록 세심하게 준비하겠습니다.',
+    bright: '다음에 또 생각나실 때도 맛있게 챙겨드릴게요!'
+  },
+  returnVisit: {
+    warm: '다시 선택해 주신 마음까지 좋은 기억으로 남을 수 있도록 늘 정성껏 준비하겠습니다.',
+    calm: '재주문에서도 한결같은 만족을 드릴 수 있도록 노력하겠습니다.',
+    bright: '다시 찾아주신 마음까지 정말 감사하고 다음에도 반갑게 맞이할게요!'
+  },
   rice: {
     warm: '예상과 달랐던 공기밥 구성도 결국 김치찜과 함께 즐거운 식사 이야기가 된 것 같아 다행이에요.',
     calm: '공기밥 구성에 관한 구체적인 경험까지 전해주셔서 주문 상황을 더 잘 이해할 수 있었습니다.',
@@ -302,14 +334,6 @@ function detailSentence(text, tone) {
   return found ? found[1][tone === 'warm' ? 0 : tone === 'calm' ? 1 : 2] : '';
 }
 function factSentence(fact, tone, seed, text = '') {
-  if (fact.id === 'revisit' && /(?:다시|또)\s*(?:시킬|시켜)|다음.{0,10}(?:시킬|주문)/.test(text)) {
-    const futureOrderLines = {
-      warm: ['다시 시켜주신다는 말씀에 벌써부터 반가운 마음이에요.', '다음에도 주문해 주시겠다는 한마디가 저희에게 큰 힘이 됩니다.'],
-      calm: ['다음에도 주문해 주시겠다는 말씀에 감사드립니다.', '다시 주문하실 의향을 전해주셔서 감사드립니다.'],
-      bright: ['다시 시켜주신다니 정말 신나요!', '다음에도 주문해 주신다니 벌써 반갑습니다!']
-    };
-    return variationPick(futureOrderLines[tone], seed + hashText('future-order'));
-  }
   if (fact.id === 'menu') {
     const detail = detailSentence(text, tone);
     if (detail) return detail;
@@ -323,6 +347,37 @@ function emojiFor(tone, seed, negative) {
 }
 function compactSentences(parts) { return parts.filter(Boolean).map(p => p.replace(/\s+/g, ' ').trim()).filter((p,i,a) => a.indexOf(p) === i); }
 function trimToTarget(text, max) { return text.length <= max ? text : text.slice(0, max - 1).replace(/[ ,]+$/,'') + '…'; }
+
+function ratingLine(tone) {
+  const lines = {
+    5: {
+      warm: '별 다섯 개로 남겨주신 만족스러운 마음까지 고맙게 받았어요.',
+      calm: '별 다섯 개의 좋은 평가에 감사드립니다.',
+      bright: '별 다섯 개라니 오늘 정말 힘이 나요!'
+    },
+    4: {
+      warm: '별 네 개로 좋게 봐주신 마음에 감사드리며, 다음에는 더 만족스러운 한 끼가 되도록 살필게요.',
+      calm: '별 네 개로 남겨주신 평가를 감사히 받아 다음 주문은 더 세심히 준비하겠습니다.',
+      bright: '별 네 개의 좋은 평가도 정말 감사합니다. 다음에는 더 기분 좋게 챙겨드릴게요!'
+    },
+    3: {
+      warm: '별 세 개로 남겨주신 솔직한 평가를 가볍게 넘기지 않고 더 나은 식사가 되도록 살필게요.',
+      calm: '별 세 개로 남겨주신 의견을 소중히 받아 개선하겠습니다.',
+      bright: '솔직한 별 세 개 평가도 큰 도움이 됩니다. 다음에는 더 만족스럽게 준비할게요!'
+    },
+    2: {
+      warm: '별 두 개라는 평가를 무겁게 받아들이고 불편했던 부분을 더 꼼꼼히 살피겠습니다.',
+      calm: '별 두 개로 남겨주신 평가를 무겁게 받아 개선하겠습니다.',
+      bright: '별 두 개로 남겨주신 아쉬운 마음을 가볍게 넘기지 않겠습니다.'
+    },
+    1: {
+      warm: '별 한 개라는 평가를 남기실 만큼 실망을 드린 점을 무겁게 받아들입니다.',
+      calm: '별 한 개로 남겨주신 평가를 무겁게 받아들이며 개선하겠습니다.',
+      bright: '별 한 개로 남겨주신 마음을 가볍게 넘기지 않고 꼭 돌아보겠습니다.'
+    }
+  };
+  return lines[rating]?.[tone] || lines[5][tone];
+}
 
 function buildPositiveReply(name, text, tone, length, seed) {
   const analysis = replyFactAnalysis(text);
@@ -338,11 +393,11 @@ function buildPositiveReply(name, text, tone, length, seed) {
       : '맛있게 드신 마음이 전해져 저희도 참 기뻐요.';
   let parts;
   if (length === 'short') {
-    parts = [introLine, factTexts[0]];
+    parts = [introLine, factTexts[0], rating === 4 ? ratingLine(tone) : ''];
     return trimToTarget(`${parts.join(' ')}${emojiFor(tone, seed, false) ? ` ${emojiFor(tone, seed, false)}` : ''}`, 75);
   }
   if (length === 'medium') {
-    parts = [introLine, factTexts[0], factTexts[1] || reaction, closer];
+    parts = [introLine, factTexts[0], factTexts[1] || ratingLine(tone), rating === 5 ? reaction : ratingLine(tone), closer];
     return trimToTarget(`${compactSentences(parts).join(' ')}${emojiFor(tone, seed, false) ? ` ${emojiFor(tone, seed, false)}` : ''}`, 190);
   }
   const longFacts = facts.slice(0, 3);
@@ -352,7 +407,7 @@ function buildPositiveReply(name, text, tone, length, seed) {
     parts.push(factSentence(fact, tone, seed + index * 11, text));
     parts.push(details[index]);
   });
-  parts.push(closer);
+  parts.push(ratingLine(tone), closer);
   // 실제 리뷰의 단서가 적으면 없는 이야기를 붙여 길이만 늘리지 않는다.
   if (facts.length < 3 && !analysis.sourceLong) parts = [introLine, factTexts[0], facts[1] ? factTexts[1] : reaction, closer];
   return trimToTarget(`${compactSentences(parts).join(' ')}${emojiFor(tone, seed, false) ? ` ${emojiFor(tone, seed, false)}` : ''}`, 420);
@@ -367,10 +422,10 @@ function buildComplaintReply(name, text, tone, length, seed) {
   const closing = tone === 'calm' ? '같은 불편이 반복되지 않도록 개선하겠습니다.' : '불편을 드린 점 다시 한번 죄송합니다.';
   const head = `${(name || '고객').trim()}님,`;
   const parts = length === 'short'
-    ? [head, apology]
+    ? [head, apology, ratingLine(tone)]
     : length === 'medium'
-      ? [head, apology, second || acknowledgement, closing]
-      : [head, apology, second || acknowledgement, acknowledgement, '기대하고 주문하셨을 식사를 만족스럽게 마무리하지 못한 점을 무겁게 받아들이겠습니다.', closing];
+      ? [head, apology, ratingLine(tone), second || acknowledgement, closing]
+      : [head, apology, ratingLine(tone), second || acknowledgement, acknowledgement, '기대하고 주문하셨을 식사를 만족스럽게 마무리하지 못한 점을 무겁게 받아들이겠습니다.', closing];
   return trimToTarget(compactSentences(parts).join(' '), length === 'short' ? 75 : length === 'medium' ? 190 : 420);
 }
 
@@ -438,6 +493,7 @@ async function generate(isReroll = false) {
       body: JSON.stringify({
         review: text,
         menu: detectedMenu,
+        rating,
         nickname: name,
         tone: $('#tone').value,
         length: $('#replyLength').value,
@@ -470,6 +526,17 @@ function cleanReviewText(text){
     .replace(/공기가\s*세개가/g,'공기가 세 개가')
     .replace(/\s+/g,' ').trim();
 }
+function isKoreanReviewLine(text){
+  const compact=String(text||'').replace(/\s+/g,'');
+  if(!compact)return false;
+  const korean=(compact.match(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g)||[]).length;
+  const latin=(compact.match(/[A-Za-z]/g)||[]).length;
+  const symbols=(compact.match(/[0-9_`~@#$%^&*+=|\\/()\[\]{}<>]/g)||[]).length;
+  // 음식 사진·배경에서 읽힌 영문/기호 덩어리는 리뷰 본문으로 넣지 않는다.
+  if(korean>=2)return korean*1.15>=latin+symbols*.25;
+  // "ㅎㅎ", "ㅠㅠ", "굿" 같은 매우 짧은 한국어 리뷰도 허용한다.
+  return /^[가-힣ㄱ-ㅎㅏ-ㅣ!?.~]+$/.test(compact);
+}
 function isName(line){ return /^[가-힣A-Za-z0-9][가-힣A-Za-z0-9._-]{1,19}$/.test(line) && !ignoreLine.test(line) && !/^(오늘|최근|리뷰|별점|주문)$/.test(line); }
 function findNickname(entries,allText=''){
   const direct=allText.match(/([가-힣A-Za-z0-9._-]{2,20})\s*[>〉]/);
@@ -488,13 +555,15 @@ function parseReviewOcr(data){
   if(!anchor)return {review:'',menu:''};
   const imageHeight=Math.max(...entries.map(line=>line.box.y1),anchor.box.y1); const maxStartGap=Math.max(90,imageHeight*.18);
   const candidate=entries.filter(line=>line.box.y0>anchor.box.y1&&!meta.test(line.text)&&!ignoreLine.test(line.text)).sort((a,b)=>a.box.y0-b.box.y0);
-  const first=candidate.find(line=>line.box.y0-anchor.box.y1<maxStartGap);
+  const first=candidate.find(line=>line.box.y0-anchor.box.y1<maxStartGap&&isKoreanReviewLine(line.text));
   if(!first)return {review:'',menu:''};
   const height=Math.max(20,first.box.y1-first.box.y0), review=[first];
   for(const line of candidate){
     if(line===first||line.box.y0<first.box.y0)continue;
     const previous=review[review.length-1];
     if(line.box.y0-previous.box.y1>height*2.8)break;
+    // 본문 아래 음식 사진에서 OCR이 만든 잡문자는 여기서 차단한다.
+    if(!isKoreanReviewLine(line.text))break;
     review.push(line);
   }
   const text=cleanReviewText(review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim().replace(/\s+(?:[0-9Il|,.'`()%]+(?:\s+[0-9Il|,.'`()%]+)*)$/,'').trim());
