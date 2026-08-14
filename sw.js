@@ -1,5 +1,5 @@
-const CACHE = 'review-helper-v26';
-const ASSETS = ['./', './index.html', './style.css', './app.js?v=26', './manifest.webmanifest', './icon.svg', './app-icon-user.png', './forest-banner-user.png'];
+const CACHE = 'review-helper-v27';
+const ASSETS = ['./', './index.html', './style.css', './app.js?v=27', './manifest.webmanifest', './icon.svg', './app-icon-user.png', './forest-banner-user.png'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))));
 self.addEventListener('fetch', event => event.respondWith(caches.match(event.request).then(response => response || fetch(event.request))));
