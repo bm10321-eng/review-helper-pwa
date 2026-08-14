@@ -41,7 +41,7 @@
         <input id="reviewImage" type="file" accept="image/*" />
       </label>
       <div id="imageArea" class="image-area" hidden><img id="imagePreview" alt="업로드한 리뷰 캡처 미리보기" /><button id="ocrButton" class="secondary-button">이미지 다시 읽기</button><p id="ocrStatus" class="hint"></p></div>
-      <p class="hint">사진을 선택하면 자동으로 리뷰 본문과 별점을 읽습니다. 닉네임·최근 주문·리뷰 수·평균별점·정렬·신고·메뉴명은 제외돼요. 다른 사진을 올리면 이전 사진과 인식 결과는 바로 지워집니다.</p>
+        <p class="hint">사진을 선택하면 자동으로 리뷰 본문·별점·사진 아래 주문 메뉴를 읽습니다. 닉네임·최근 주문·리뷰 수·평균별점·정렬·신고는 제외돼요. 다른 사진을 올리면 이전 사진과 인식 결과는 바로 지워집니다.</p>
     </section>
 
     <section class="card compact-options">
@@ -63,6 +63,6 @@
     <button id="reroll" class="secondary-button reroll-button" type="button">다르게 만들기 ↻</button>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="app.js?v=28"></script>
+    <script src="app.js?v=29"></script>
 </body>
 </html>
