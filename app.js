@@ -5,6 +5,8 @@ let activeStore = 0, rating = 5, deferredPrompt;
 let replyHistory = JSON.parse(localStorage.getItem('review-helper-reply-history') || '[]');
 let previousReply = '';
 let variationId = Number(localStorage.getItem('review-helper-variation-id') || 0);
+let imageObjectUrl = '';
+let ocrRequestId = 0;
 const emoji = { happy:['😊','😆','🥹','💛','🍀','✨','🙌','🫶','💜','🌷'], playful:['😆','ㅋㅋ','🥹','🙌','✨','💛'], calm:['😊','💛','🍀'] };
 const menuWords = ['감자튀김','김치찜','닭강정','치즈볼','볶음밥','떡볶이','치킨','피자','족발','보쌈','국밥','김밥','초밥','라면','파스타','버거','샐러드','튀김','갈비','삼겹살','덮밥','찜','탕','면'];
 const ignoreLine = /최근\s*리뷰|리뷰\s*노출\s*정책|사장님\s*댓글|최신순|사진\s*리뷰만\s*보기|신고하기|최근\s*\d+번\s*주문|리뷰\s*\d+|평균\s*별점|알뜰배달|오늘[,，]?|주문\s*내역|도움돼요|답글|메뉴\s*더보기/i;
@@ -124,6 +126,9 @@ function replyFactAnalysis(text) {
   if (has(/배달.{0,12}(빠르|빨리|좋|만족)|금방\s*(?:왔|도착)/)) add('delivery');
   if (has(/포장.{0,12}(깔끔|좋|정성)|깔끔하게\s*포장/)) add('packaging');
   if (has(/부드럽|촉촉|바삭|고소|국물|소스|양념|고기|김치찜|찌개/)) add('menu');
+  if (has(/감사|고마워|고맙/)) add('gratitude');
+  if (has(/리뷰\s*이벤트|이벤트/)) add('event');
+  if (has(/요청|부탁|주세요|바랍니다|원해/)) add('request');
   const complaints = [];
   const bad = (id, pattern) => { if (has(pattern)) complaints.push(id); };
   bad('missing', /누락|안\s*왔|빠졌|없길래|덜\s*왔/);
@@ -185,6 +190,21 @@ const factLines = {
     warm: ['맛있게 드셨다는 말씀이 저희에게 가장 큰 칭찬이에요.', '기분 좋게 드신 마음이 전해져서 반갑습니다.'],
     calm: ['맛있게 드셨다는 평가에 감사드립니다.', '좋은 식사가 되었다는 말씀을 반갑게 확인했습니다.'],
     bright: ['맛있게 드셨다니 저희도 정말 신나요!', '기분 좋게 드셨다는 말에 오늘도 힘이 납니다!']
+  }
+  ,gratitude: {
+    warm: ['고맙다는 말씀을 남겨주셔서 오히려 저희가 더 감사한 마음이에요.', '따뜻한 인사를 전해주셔서 큰 힘이 됩니다.'],
+    calm: ['감사의 말씀을 전해주셔서 감사드립니다.', '따뜻한 말씀까지 남겨주셔서 감사드립니다.'],
+    bright: ['고맙다는 말씀에 저희가 더 힘을 얻어요!', '따뜻한 인사까지 전해주셔서 정말 감사합니다!']
+  },
+  event: {
+    warm: ['이벤트와 함께 남겨주신 정성스러운 리뷰도 감사히 읽었어요.', '이벤트 참여로 들러주신 인연이 좋은 식사로 이어진 것 같아 반갑습니다.'],
+    calm: ['이벤트 참여와 함께 의견을 남겨주셔서 감사합니다.', '리뷰 이벤트를 통해 전해주신 의견도 소중히 확인했습니다.'],
+    bright: ['이벤트 참여까지 해주시고 리뷰도 남겨주셨다니 감사해요!', '이벤트로 만나 뵙고 이렇게 반가운 이야기도 들으니 더 기쁩니다!']
+  },
+  request: {
+    warm: ['말씀해 주신 요청은 다음 준비 때 더 꼼꼼히 살펴볼게요.', '남겨주신 바람을 가볍게 넘기지 않고 잘 챙기겠습니다.'],
+    calm: ['말씀해 주신 요청 사항을 확인하고 준비 과정에 반영하겠습니다.', '요청하신 부분은 다음 주문을 준비할 때 참고하겠습니다.'],
+    bright: ['말씀해 주신 요청도 놓치지 않고 잘 챙겨볼게요!', '남겨주신 바람을 참고해서 더 기분 좋은 주문이 되도록 하겠습니다!']
   }
 };
 
@@ -268,7 +288,23 @@ function replyIntro(name, tone, seed) {
   ];
   return variationPick(kinds, seed, false);
 }
-function factSentence(fact, tone, seed) {
+function detailSentence(text, tone) {
+  const map = [
+    [/국물/, ['국물에 대해 남겨주신 말씀을 보니 한 끼를 어떻게 드셨는지가 생생하게 전해져요.', '국물에 관한 구체적인 의견도 감사히 확인했습니다.', '국물 이야기까지 들려주셔서 저희도 더 반가워요!']],
+    [/고기/, ['고기에 대해 콕 집어 말씀해 주셔서 더 뿌듯해요.', '고기에 관한 의견도 소중히 확인했습니다.', '고기까지 좋게 봐주셨다니 정말 기쁩니다!']],
+    [/소스|양념/, ['양념과 소스에 대해 남겨주신 표현이 특히 반갑습니다.', '양념에 관한 의견도 감사히 확인했습니다.', '양념까지 취향에 맞으셨다니 신나요!']],
+    [/바삭|튀김/, ['바삭한 식감을 알아봐 주셔서 준비한 보람을 느껴요.', '식감에 관한 좋은 의견도 감사드립니다.', '바삭한 식감까지 좋게 느끼셨다니 신이 납니다!']],
+    [/포장/, ['포장 상태까지 살펴봐 주셔서 감사해요.', '포장 경험에 관한 의견을 확인했습니다.', '포장까지 좋게 봐주셨다니 기뻐요!']],
+    [/배달/, ['배달 과정까지 이야기해 주셔서 감사합니다.', '배달 경험에 관한 의견도 소중히 확인했습니다.', '배달 이야기까지 남겨주셔서 감사합니다!']]
+  ];
+  const found = map.find(([pattern]) => pattern.test(text));
+  return found ? found[1][tone === 'warm' ? 0 : tone === 'calm' ? 1 : 2] : '';
+}
+function factSentence(fact, tone, seed, text = '') {
+  if (fact.id === 'menu') {
+    const detail = detailSentence(text, tone);
+    if (detail) return detail;
+  }
   const group = factLines[fact.id] || factLines.taste;
   return variationPick(group[tone], seed + hashText(fact.id));
 }
@@ -284,7 +320,7 @@ function buildPositiveReply(name, text, tone, length, seed) {
   let facts = analysis.facts;
   if (!facts.length) facts = [{id:'taste'}];
   const introLine = replyIntro(name, tone, seed);
-  const factTexts = facts.map((fact, index) => factSentence(fact, tone, seed + index * 11));
+  const factTexts = facts.map((fact, index) => factSentence(fact, tone, seed + index * 11, text));
   const closer = variationPick(replyProfiles[tone].closers, seed + 17);
   const reaction = tone === 'calm'
     ? '좋게 드신 경험을 구체적으로 전해주셔서 감사드립니다.'
@@ -304,7 +340,7 @@ function buildPositiveReply(name, text, tone, length, seed) {
   const details = longFacts.map(fact => longDetailLines[fact.id]?.[tone] || longDetailLines.taste[tone]);
   parts = [introLine];
   longFacts.forEach((fact, index) => {
-    parts.push(factSentence(fact, tone, seed + index * 11));
+    parts.push(factSentence(fact, tone, seed + index * 11, text));
     parts.push(details[index]);
   });
   parts.push(closer);
@@ -331,9 +367,9 @@ function buildComplaintReply(name, text, tone, length, seed) {
 
 function isComplaintReview(text) {
   const analysis = replyFactAnalysis(text);
-  const serious = analysis.complaints.some(key => ['quality','delivery','temperature','packaging','service'].includes(key));
-  // "공기밥이 없길래"처럼 뒤에 즐거운 경험이 이어지는 5점 리뷰를 불만으로 오인하지 않는다.
-  return rating <= 2 || (serious && analysis.facts.length < 2 && rating <= 3);
+  const explicitComplaint = /맛없|별로|실망|다신|최악|못\s*먹|불친절|배달.{0,12}(늦|느리|오래)|식었|차갑|미지근|누락|빠졌|안\s*왔|샜|쏟/.test(text);
+  // 별점이 높아도 명확한 불만 문장이 있으면 그 불만을 먼저 답한다.
+  return rating <= 2 || explicitComplaint;
 }
 
 function saveReplyHistory(result) {
@@ -388,15 +424,13 @@ function findNickname(entries,allText=''){
 }
 function parseReviewOcr(data){
   const entries=(data.lines||[]).map(line=>({text:cleanOcrLine(line.text||''),box:line.bbox||{x0:0,y0:0,x1:0,y1:0}})).filter(line=>line.text);
-  const allText=data.text||entries.map(line=>line.text).join('\n');
-  let name=findNickname(entries,allText), nameLine=name?entries.find(line=>line.text.includes(name)):null;
   const meta=/리뷰\s*\d+|평균\s*별점|최근\s*\d+번|오늘|어제|지난\s*달|알뜰배달|한집배달|별점|★|☆/;
-  const anchor=entries.filter(line=>meta.test(line.text)&&(!nameLine||line.box.y0>=nameLine.box.y0)).sort((a,b)=>b.box.y1-a.box.y1)[0];
-  if(!anchor)return {name,review:''};
+  const anchor=entries.filter(line=>meta.test(line.text)).sort((a,b)=>b.box.y1-a.box.y1)[0];
+  if(!anchor)return {review:''};
   const imageHeight=Math.max(...entries.map(line=>line.box.y1),anchor.box.y1); const maxStartGap=Math.max(90,imageHeight*.18);
   const candidate=entries.filter(line=>line.box.y0>anchor.box.y1&&!meta.test(line.text)&&!ignoreLine.test(line.text)&&!/^(김치찜|치킨|피자|국밥|떡볶이|족발|보쌈|\d+(\.\d+)?인)/.test(line.text)).sort((a,b)=>a.box.y0-b.box.y0);
   const first=candidate.find(line=>line.box.y0-anchor.box.y1<maxStartGap);
-  if(!first)return {name,review:''};
+  if(!first)return {review:''};
   const height=Math.max(20,first.box.y1-first.box.y0), review=[first];
   for(const line of candidate){
     if(line===first||line.box.y0<first.box.y0)continue;
@@ -405,7 +439,7 @@ function parseReviewOcr(data){
     review.push(line);
   }
   const text=cleanReviewText(review.map(line=>line.text).join(' ').replace(/\s+/g,' ').trim().replace(/\s+(?:[0-9Il|,.'`()%]+(?:\s+[0-9Il|,.'`()%]+)*)$/,'').trim());
-  return {name,review:text};
+  return {review:text};
 }
 async function prepareOcrImage(file){
   const bitmap=await createImageBitmap(file), maxSide=1800, scale=Math.min(2,maxSide/Math.max(bitmap.width,bitmap.height));
@@ -468,42 +502,59 @@ function ocrConfidence(parsed, data) {
   if (review.length >= 12 && korean >= 8 && noise === 0 && avgConfidence >= 55) return '높음';
   return '확인 필요';
 }
-if($('#reroll')) $('#reroll').onclick=()=>generate(true);
-$('#ocrButton').onclick=async()=>{
-  const file=$('#reviewImage').files[0];
+function clearPreviousImageResult(){
+  $('#reviewText').value='';
+  $('#result').value='';
+  $('#customerName').value='';
+  $('#ocrStatus').textContent='새 이미지를 읽는 중이에요…';
+  rating=5;
+  renderStars();
+}
+async function readReviewImage(file=$('#reviewImage').files[0]){
   if(!file){$('#ocrStatus').textContent='리뷰 캡처 이미지를 먼저 선택해 주세요.';return;}
   if(!window.Tesseract){$('#ocrStatus').textContent='OCR 모듈을 불러오지 못했어요. 이미지 내용을 직접 입력해 주세요.';return;}
+  const requestId=++ocrRequestId;
   try{
     $('#ocrButton').disabled=true;
-    $('#ocrStatus').textContent='원본과 선명화 이미지를 함께 비교해 닉네임·별점·리뷰 본문만 읽는 중이에요…';
+    $('#ocrStatus').textContent='원본과 선명화 이미지를 비교해 리뷰 본문과 별점만 읽는 중이에요…';
     const enhanced=await prepareOcrImage(file);
     const [originalResult, enhancedResult, stars]=await Promise.all([
       Tesseract.recognize(file,'kor+eng'),
       Tesseract.recognize(enhanced,'kor+eng'),
       detectStarRating(file)
     ]);
-    let original=parseReviewOcr(originalResult.data), enhancedParsed=parseReviewOcr(enhancedResult.data);
+    if(requestId!==ocrRequestId)return;
+    const original=parseReviewOcr(originalResult.data), enhancedParsed=parseReviewOcr(enhancedResult.data);
     original.review=repairOcrReview(original.review);
     enhancedParsed.review=repairOcrReview(enhancedParsed.review);
-    let parsed=ocrCandidateScore(original,originalResult.data)>=ocrCandidateScore(enhancedParsed,enhancedResult.data)?original:enhancedParsed;
-    let selectedData=parsed===original?originalResult.data:enhancedResult.data;
-    if(!parsed.name){
-      $('#ocrStatus').textContent='닉네임 영역을 한 번 더 확인하는 중이에요…';
-      parsed.name=await recoverNickname(file,selectedData);
-    }
-    if(parsed.name)$('#customerName').value=parsed.name;
+    const parsed=ocrCandidateScore(original,originalResult.data)>=ocrCandidateScore(enhancedParsed,enhancedResult.data)?original:enhancedParsed;
+    const selectedData=parsed===original?originalResult.data:enhancedResult.data;
+    if(requestId!==ocrRequestId)return;
     $('#reviewText').value=parsed.review||'';
     if(stars){rating=stars;renderStars();}
     const confidence=ocrConfidence(parsed,selectedData);
     const uncertain=confidence==='확인 필요'?' 일부 글자는 원본 이미지와 한 번 비교해 주세요.':'';
     $('#ocrStatus').textContent=parsed.review
-      ? `${parsed.name?'닉네임·':''}리뷰 내용${stars?`·${stars}점`:''}을 입력했어요. 인식 신뢰도 ${confidence}.${uncertain}`
-      : '리뷰 본문을 확실히 찾지 못했어요. 닉네임과 별점만 입력했으니 본문을 직접 확인해 주세요.';
+      ? `리뷰 내용${stars?`·${stars}점`:''}을 입력했어요. 인식 신뢰도 ${confidence}.${uncertain}`
+      : '리뷰 본문을 확실히 찾지 못했어요. 본문을 직접 확인해 주세요.';
   }catch(error){
+    if(requestId!==ocrRequestId)return;
     console.error('OCR failed',error);
     $('#ocrStatus').textContent='인식에 실패했어요. 이미지를 다시 선택하거나 직접 입력해 주세요.';
-  }finally{$('#ocrButton').disabled=false;}
+  }finally{if(requestId===ocrRequestId)$('#ocrButton').disabled=false;}
+}
+if($('#reroll')) $('#reroll').onclick=()=>generate(true);
+$('#reviewImage').onchange=e=>{
+  const file=e.target.files[0];
+  if(!file)return;
+  if(imageObjectUrl)URL.revokeObjectURL(imageObjectUrl);
+  imageObjectUrl=URL.createObjectURL(file);
+  $('#imagePreview').src=imageObjectUrl;
+  $('#imageArea').hidden=false;
+  clearPreviousImageResult();
+  readReviewImage(file);
 };
+$('#ocrButton').onclick=()=>readReviewImage();
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('#installButton').hidden=false;});
 $('#installButton').onclick=async()=>{deferredPrompt.prompt();await deferredPrompt.userChoice;$('#installButton').hidden=true;};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');renderStores();renderStars();
