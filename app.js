@@ -378,7 +378,7 @@ function saveReplyHistory(result) {
   localStorage.setItem('review-helper-reply-history', JSON.stringify(replyHistory));
 }
 
-function generate(isReroll = false) {
+function generateLocally(isReroll = false) {
   const text = $('#reviewText').value.trim();
   const name = $('#customerName').value.trim();
   const tone = $('#tone').value;
@@ -400,6 +400,54 @@ function generate(isReroll = false) {
   localStorage.setItem('review-helper-variation-id', String(variationId));
   saveReplyHistory(chosen);
   $('#result').value = chosen;
+}
+async function generate(isReroll = false) {
+  const text = $('#reviewText').value.trim();
+  const name = $('#customerName').value.trim();
+  if (!text) return generateLocally(isReroll);
+
+  const isVercelHost = location.hostname.endsWith('.vercel.app') || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const endpoint = window.REVIEW_HELPER_AI_ENDPOINT || (isVercelHost ? '/api/generate-reply' : '');
+  if (!endpoint) {
+    generateLocally(isReroll);
+    const status = $('#aiStatus');
+    if (status) status.textContent = 'AI 서버를 연결하면 리뷰 맥락을 더 깊이 반영한 답글을 만들 수 있어요.';
+    return;
+  }
+
+  const button = $('#generate');
+  const status = $('#aiStatus');
+  const originalLabel = button.innerHTML;
+  button.disabled = true;
+  button.textContent = 'AI 답글 만드는 중…';
+  if (status) status.textContent = '리뷰 내용을 읽고 상황에 맞는 답글을 만들고 있어요…';
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        review: text,
+        nickname: name,
+        tone: $('#tone').value,
+        length: $('#replyLength').value,
+        previousReply: isReroll ? previousReply : ''
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.reply) throw new Error(payload.error || 'AI 답글을 만들지 못했습니다.');
+    variationId += 1;
+    localStorage.setItem('review-helper-variation-id', String(variationId));
+    saveReplyHistory(payload.reply.trim());
+    $('#result').value = payload.reply.trim();
+    if (status) status.textContent = 'AI가 리뷰 내용에 맞춰 답글을 만들었어요.';
+  } catch (error) {
+    console.error('AI reply generation failed', error);
+    generateLocally(isReroll);
+    if (status) status.textContent = 'AI 연결에 실패해 기본 답글로 만들었어요. 잠시 후 다시 시도해 주세요.';
+  } finally {
+    button.disabled = false;
+    button.innerHTML = originalLabel;
+  }
 }
 function cleanOcrLine(line){ return line.replace(/[•·]/g,' ').replace(/\s+/g,' ').trim(); }
 function cleanReviewText(text){
